@@ -1,0 +1,576 @@
+@page "/inventario"
+@inherits WmsPage
+@inject FileExporter Exporter
+
+<SectionContent SectionName="page-title">Inventario</SectionContent>
+
+@if (_summary is { } s)
+{
+    <div class="stat-strip">
+        <StatTile Icon="boxes" Label="Unidades" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="vs. hace 30 días" />
+        <StatTile Icon="wallet" Label="Valor" Value="@Fmt.MoneyCompact(s.StockValue, s.CurrencyCode)" Hint="a precio de venta" />
+        <StatTile Icon="tag" Label="Artículos" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, "categoría", "categorías"))" />
+        <StatTile Icon="alert" Label="Stock bajo" Value="@Fmt.Compact(s.LowStock)" Hint="bajo su mínimo" />
+        <StatTile Icon="package-x" Label="Agotados" Value="@Fmt.Compact(s.OutOfStock)" Hint="sin unidades" />
+    </div>
+}
+
+<div class="page">
+    <div class="filters">
+        <div class="field search">
+            <label>Buscar</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="Artículo, SKU…" value="@_search" @oninput="OnSearchInput" />
+            </div>
+        </div>
+        <div class="field">
+            <label>Sede</label>
+            <select class="select" value="@_site" @onchange="e => ApplyFilterAsync(() => _site = e.Value?.ToString() ?? string.Empty)">
+                <option value="">Todas</option>
+                @foreach (var site in _sites)
+                {
+                    <option value="@site.Id">@site.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>Categoría</label>
+            <select class="select" value="@_category" @onchange="e => ApplyFilterAsync(() => _category = e.Value?.ToString() ?? string.Empty)">
+                <option value="">Todas</option>
+                @foreach (var category in _categories)
+                {
+                    <option value="@category">@category</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>Estado</label>
+            <select class="select" value="@_status" @onchange="e => ApplyFilterAsync(() => _status = e.Value?.ToString() ?? string.Empty)">
+                <option value="">Todos</option>
+                <option value="InStock">En stock</option>
+                <option value="Low">Stock bajo</option>
+                <option value="OutOfStock">Agotado</option>
+            </select>
+        </div>
+        <div class="actions">
+            @if (_selected.Count > 0)
+            {
+                <button class="btn btn-outline" @onclick="TransferSelected"><Icon Name="arrows" Size="18" />Transferir (@_selected.Count)</button>
+            }
+            <button class="btn btn-dark" @onclick="() => OpenAdjust(null)"><Icon Name="plus" Size="18" />Ajustar stock</button>
+            <button class="btn btn-dark icon-btn" title="Transferir entre sedes" aria-label="Transferir entre sedes" @onclick="() => OpenTransfer(null)"><Icon Name="arrows" Size="18" /></button>
+            <button class="btn btn-dark icon-btn" title="Exportar CSV" aria-label="Exportar CSV" @onclick="ExportAsync"><Icon Name="download" Size="18" /></button>
+        </div>
+    </div>
+
+    @if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="boxes" Title="@(HasFilters ? "Nada coincide con los filtros" : "Aún no hay stock registrado")"
+                        Text="@(HasFilters ? "Prueba con otra búsqueda o quita filtros." : "El stock se crea al recibir mercadería o al hacer un ajuste.")">
+                @if (!HasFilters)
+                {
+                    <a class="btn btn-dark" href="recepciones?nueva=1"><Icon Name="plus" Size="18" />Registrar una recepción</a>
+                }
+            </EmptyState>
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th class="check-col"><input type="checkbox" checked="@AllSelected" @onchange="ToggleAll" aria-label="Seleccionar todo" /></th>
+                            <th>Artículo</th>
+                            <th>Sede</th>
+                            <th>Ubicación</th>
+                            <th class="num">Stock</th>
+                            <th class="num">Disponible</th>
+                            <th class="num">Valor</th>
+                            <th>Estado</th>
+                            <th class="actions-col">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var row in page.Items)
+                        {
+                            var key = (row.SiteId, row.ItemId);
+                            var (text, tone) = StatusPill.ForStock(row.Status);
+                            <tr @key="key">
+                                <td class="check-col"><input type="checkbox" checked="@_selected.ContainsKey(key)" @onchange="() => Toggle(row)" aria-label="Seleccionar @row.ItemName" /></td>
+                                <td>
+                                    <div class="cell-main">
+                                        <Avatar Text="@row.ItemName" Size="34" />
+                                        <div class="two-line"><span class="t1">@row.ItemName</span><span class="t2">#@row.Sku</span></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="two-line"><span class="t1">@row.SiteName</span><span class="t2">@row.SiteCode</span></div>
+                                </td>
+                                <td>
+                                    <div class="two-line"><span class="t1">@(row.Bin ?? "—")</span><span class="t2">@(row.Category ?? "Sin categoría")</span></div>
+                                </td>
+                                <td class="num strong">@Fmt.Qty(row.OnHand) <span class="faint" style="font-weight:500">@row.Unit</span></td>
+                                <td class="num">
+                                    <div class="two-line" style="align-items:flex-end">
+                                        <span class="@(row.Status == StockStatus.InStock ? "" : "warn-text")">@Fmt.Qty(row.Available)</span>
+                                        @if (row.Reserved > 0)
+                                        {
+                                            <span class="t2">@Fmt.Qty(row.Reserved) reservado</span>
+                                        }
+                                        else if (row.ReorderPoint is { } min)
+                                        {
+                                            <span class="t2">mín. @Fmt.Qty(min)</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td class="num strong">@Fmt.Money(row.Value, row.CurrencyCode)</td>
+                                <td><StatusPill Text="@text" Tone="@tone" /></td>
+                                <td class="actions-col">
+                                    <KebabMenu>
+                                        <button @onclick="() => OpenAdjust(row)"><Icon Name="edit" Size="18" />Ajustar stock</button>
+                                        <button @onclick="() => OpenTransfer([row])"><Icon Name="arrows" Size="18" />Transferir</button>
+                                        <button @onclick="() => OpenSettings(row)"><Icon Name="pin" Size="18" />Ubicación y mínimo</button>
+                                        <hr />
+                                        <a href="@($"movimientos?q={Uri.EscapeDataString(row.Sku)}")"><Icon Name="list" Size="18" />Ver kardex</a>
+                                    </KebabMenu>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="registros de stock" OnPage="GoToPageAsync" />
+        }
+    }
+</div>
+
+@if (_adjust is { } a)
+{
+    <Modal Title="Ajustar stock" Subtitle="Conteo físico, mermas o correcciones. Queda en el kardex y se informa a la suite." Error="@_error" OnClose="CloseModals">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>Sede</label>
+                    <select class="select" value="@a.SiteId" @onchange="async e => { a.SiteId = ParseGuid(e.Value); await RefreshCurrentAsync(); }">
+                        <option value="">Elige la sede</option>
+                        @foreach (var site in _sites)
+                        {
+                            <option value="@site.Id">@site.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Motivo</label>
+                    <select class="select" @bind="a.Reason">
+                        @foreach (var reason in AdjustmentReasons.All)
+                        {
+                            <option value="@reason">@Fmt.Reason(reason)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="field">
+                <label>Artículo</label>
+                @if (a.Item is { } item)
+                {
+                    <div class="line" style="grid-template-columns:1fr auto">
+                        <div class="cell-main">
+                            <Avatar Text="@item.Name" Size="34" />
+                            <div class="two-line"><span class="t1">@item.Name</span><span class="t2">#@item.Sku · stock actual @(a.Current is { } cur ? Fmt.Qty(cur) : "—") @item.Unit</span></div>
+                        </div>
+                        <button class="btn btn-sm" @onclick="() => { a.Item = null; a.Current = null; }">Cambiar</button>
+                    </div>
+                }
+                else
+                {
+                    <ItemPicker OnSelected="async i => { a.Item = i; await RefreshCurrentAsync(); }" />
+                }
+            </div>
+            <div class="segmented">
+                <button class="@(a.IsCount ? "on" : "")" @onclick="() => a.IsCount = true">Conteo físico</button>
+                <button class="@(!a.IsCount ? "on" : "")" @onclick="() => a.IsCount = false">Entrada / salida</button>
+            </div>
+            <div class="form-row">
+                <div class="field">
+                    <label>@(a.IsCount ? "Cantidad contada" : "Diferencia (+ entra, − sale)")</label>
+                    <input class="control" type="number" step="any" @bind="a.Quantity" @bind:event="oninput" />
+                </div>
+                <div class="field">
+                    <label>Resultado</label>
+                    <input class="control" disabled value="@(Preview(a) is { } p ? $"{Fmt.Qty(p)} {a.Item?.Unit}" : "—")" />
+                </div>
+            </div>
+            <div class="field">
+                <label>Nota (opcional)</label>
+                <input class="control" placeholder="Ej. conteo cíclico pasillo A" @bind="a.Note" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="CloseModals">Cancelar</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAdjustAsync">Guardar ajuste</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_transfer is { } t)
+{
+    <Modal Title="Transferir entre sedes" Subtitle="Mueve mercadería de un almacén o tienda a otro." Size="lg" Error="@_error" OnClose="CloseModals">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>Origen</label>
+                    <select class="select" value="@t.FromId" @onchange="async e => { t.FromId = ParseGuid(e.Value); if (_lines is not null) await _lines.RefreshAvailabilityAsync(); }">
+                        <option value="">Elige el origen</option>
+                        @foreach (var site in _sites)
+                        {
+                            <option value="@site.Id">@site.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Destino</label>
+                    <select class="select" value="@t.ToId" @onchange="e => t.ToId = ParseGuid(e.Value)">
+                        <option value="">Elige el destino</option>
+                        @foreach (var site in _sites.Where(x => x.Id != t.FromId))
+                        {
+                            <option value="@site.Id">@site.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <LineEditor Changed="StateHasChanged" @ref="_lines" Lines="t.Lines" AvailableFor="AvailableAtOriginAsync" />
+            <div class="field">
+                <label>Nota (opcional)</label>
+                <input class="control" placeholder="Ej. reposición semanal" @bind="t.Note" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="CloseModals">Cancelar</button>
+            <button class="btn btn-dark" disabled="@(_busy || t.Lines.Count == 0)" @onclick="SaveTransferAsync">Transferir</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_settings is { } st)
+{
+    <Modal Title="Ubicación y stock mínimo" Subtitle="@($"{st.Row.ItemName} en {st.Row.SiteName}")" Error="@_error" OnClose="CloseModals">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>Ubicación (pasillo-estante-nivel)</label>
+                    <input class="control" placeholder="A-01-02" @bind="st.Bin" />
+                </div>
+                <div class="field">
+                    <label>Stock mínimo</label>
+                    <input class="control" type="number" min="0" step="any" placeholder="Sin mínimo" @bind="st.ReorderPoint" />
+                </div>
+            </div>
+            <div class="alert info"><Icon Name="bell" Size="18" /><span>Cuando el disponible llegue al mínimo, el artículo aparecerá como “Stock bajo”.</span></div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="CloseModals">Cancelar</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveSettingsAsync">Guardar</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class AdjustForm
+    {
+        public Guid? SiteId { get; set; }
+        public ItemRow? Item { get; set; }
+        public bool IsCount { get; set; } = true;
+        public decimal? Quantity { get; set; }
+        public string Reason { get; set; } = AdjustmentReasons.Count;
+        public string? Note { get; set; }
+        public decimal? Current { get; set; }
+    }
+
+    private sealed class TransferForm
+    {
+        public Guid? FromId { get; set; }
+        public Guid? ToId { get; set; }
+        public List<LineEditor.LineDraft> Lines { get; } = [];
+        public string? Note { get; set; }
+    }
+
+    private sealed class SettingsForm(StockRow row)
+    {
+        public StockRow Row { get; } = row;
+        public string? Bin { get; set; } = row.Bin;
+        public decimal? ReorderPoint { get; set; } = row.ReorderPoint;
+    }
+
+    [SupplyParameterFromQuery(Name = "q")] public string? Query { get; set; }
+    [SupplyParameterFromQuery(Name = "estado")] public string? StatusQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "sede")] public string? SiteQuery { get; set; }
+    [SupplyParameterFromQuery(Name = "ajustar")] public int? AdjustQuery { get; set; }
+
+    private const int PageSize = 10;
+    private DashboardSummary? _summary;
+    private PagedResult<StockRow>? _result;
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<string> _categories = [];
+    private readonly Dictionary<(Guid, Guid), StockRow> _selected = [];
+    private string _search = "", _site = "", _category = "", _status = "";
+    private int _page = 1;
+    private CancellationTokenSource? _debounce;
+    private bool _queryApplied;
+    private string? _appliedQuery, _appliedStatus, _appliedSite;
+
+    private AdjustForm? _adjust;
+    private TransferForm? _transfer;
+    private SettingsForm? _settings;
+    private LineEditor? _lines;
+    private string? _error;
+    private bool _busy;
+
+    private bool HasFilters => _search != "" || _site != "" || _category != "" || _status != "";
+    private bool AllSelected => _result is { Items.Count: > 0 } r && r.Items.All(x => _selected.ContainsKey((x.SiteId, x.ItemId)));
+
+    // Los filtros de la dirección (buscador superior, enlaces del panel) se aplican antes de la primera carga y
+    // vuelven a cargar la tabla si cambian estando ya en la pantalla.
+    protected override void OnInitialized() => ApplyQuery();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ApplyQuery())
+            await ReloadAsync();
+        if (AdjustQuery == 1 && _adjust is null)
+            OpenAdjust(null);
+    }
+
+    private bool ApplyQuery()
+    {
+        if (_queryApplied && Query == _appliedQuery && StatusQuery == _appliedStatus && SiteQuery == _appliedSite)
+            return false;
+        (_queryApplied, _appliedQuery, _appliedStatus, _appliedSite) = (true, Query, StatusQuery, SiteQuery);
+        _search = Query ?? "";
+        _status = StatusQuery ?? "";
+        _site = SiteQuery ?? "";
+        _page = 1;
+        return true;
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _sites = await Wms.Master.GetSitesAsync(activeOnly: true);
+        _categories = await Wms.Master.GetCategoriesAsync();
+        _summary = await Wms.Inventory.GetDashboardAsync();
+        _result = await Wms.Inventory.GetStockAsync(CurrentQuery() with { Page = _page, PageSize = PageSize });
+        if (_result.Items.Count == 0 && _page > 1)
+        {
+            _page = _result.Pages;
+            _result = await Wms.Inventory.GetStockAsync(CurrentQuery() with { Page = _page, PageSize = PageSize });
+        }
+    }
+
+    private StockQuery CurrentQuery() => new(
+        Search: _search, SiteId: ParseGuid(_site), Category: _category == "" ? null : _category,
+        Status: Enum.TryParse<StockStatus>(_status, out var status) ? status : null);
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _page = 1;
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private async Task ApplyFilterAsync(Action set)
+    {
+        set();
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _page = page;
+        await ReloadAsync();
+    }
+
+    private void Toggle(StockRow row)
+    {
+        var key = (row.SiteId, row.ItemId);
+        if (!_selected.Remove(key))
+            _selected[key] = row;
+    }
+
+    private void ToggleAll()
+    {
+        if (_result is null)
+            return;
+        if (AllSelected)
+            foreach (var row in _result.Items) _selected.Remove((row.SiteId, row.ItemId));
+        else
+            foreach (var row in _result.Items) _selected[(row.SiteId, row.ItemId)] = row;
+    }
+
+    private void TransferSelected()
+    {
+        var rows = _selected.Values.ToList();
+        if (rows.Select(r => r.SiteId).Distinct().Count() > 1)
+        {
+            Toasts.Error("Para transferir juntos, los artículos seleccionados deben estar en la misma sede.");
+            return;
+        }
+        OpenTransfer(rows);
+    }
+
+    // ---------- Ajuste ----------
+
+    private void OpenAdjust(StockRow? row)
+    {
+        _error = null;
+        _adjust = new AdjustForm
+        {
+            SiteId = row?.SiteId ?? ParseGuid(_site) ?? Session.DefaultSiteId ?? _sites.FirstOrDefault()?.Id,
+            Current = row?.OnHand,
+        };
+        if (row is not null)
+            _ = LoadItemAsync(row.ItemId);
+    }
+
+    private async Task LoadItemAsync(Guid itemId)
+    {
+        if (_adjust is null)
+            return;
+        _adjust.Item = await Wms.Master.GetItemAsync(itemId);
+        await RefreshCurrentAsync();
+        StateHasChanged();
+    }
+
+    private async Task RefreshCurrentAsync()
+    {
+        if (_adjust is { SiteId: { } site, Item: { } item })
+            _adjust.Current = (await Wms.Inventory.GetStockRowAsync(site, item.Id))?.OnHand ?? 0;
+    }
+
+    private static decimal? Preview(AdjustForm a) =>
+        a.Quantity is not { } q ? null : a.IsCount ? q : (a.Current ?? 0) + q;
+
+    private async Task SaveAdjustAsync()
+    {
+        if (_adjust is not { } a)
+            return;
+        if (a.SiteId is not { } site || a.Item is not { } item || a.Quantity is not { } quantity)
+        {
+            _error = "Elige la sede, el artículo y la cantidad.";
+            return;
+        }
+        _busy = true;
+        _error = await TryAsync(() => Wms.Inventory.AdjustAsync(site, item.Id, a.IsCount ? quantity : null, a.IsCount ? null : quantity,
+            a.Reason, a.Note), $"Stock de {item.Name} actualizado.");
+        _busy = false;
+        if (_error is null)
+            CloseModals();
+    }
+
+    // ---------- Transferencia ----------
+
+    private void OpenTransfer(IReadOnlyList<StockRow>? rows)
+    {
+        _error = null;
+        _transfer = new TransferForm { FromId = rows?.FirstOrDefault()?.SiteId ?? ParseGuid(_site) ?? Session.DefaultSiteId };
+        _ = PrefillTransferAsync(rows ?? []);
+    }
+
+    private async Task PrefillTransferAsync(IReadOnlyList<StockRow> rows)
+    {
+        foreach (var row in rows)
+        {
+            if (await Wms.Master.GetItemAsync(row.ItemId) is { } item)
+                _transfer?.Lines.Add(new LineEditor.LineDraft { Item = item, Available = row.Available });
+        }
+        StateHasChanged();
+    }
+
+    private async Task<decimal?> AvailableAtOriginAsync(ItemRow item) =>
+        _transfer?.FromId is { } from ? await Wms.Inventory.GetAvailableAsync(from, item.Id) : null;
+
+    private async Task SaveTransferAsync()
+    {
+        if (_transfer is not { } t)
+            return;
+        if (t.FromId is not { } from || t.ToId is not { } to)
+        {
+            _error = "Elige el origen y el destino.";
+            return;
+        }
+        _busy = true;
+        string? number = null;
+        _error = await TryAsync(async () => number = await Wms.Inventory.TransferAsync(from, to, t.Lines.Select(l => l.ToDocumentLine()).ToList(), t.Note));
+        _busy = false;
+        if (_error is null)
+        {
+            Toasts.Success($"Transferencia {number} registrada.");
+            _selected.Clear();
+            CloseModals();
+        }
+    }
+
+    // ---------- Ubicación y mínimo ----------
+
+    private void OpenSettings(StockRow row)
+    {
+        _error = null;
+        _settings = new SettingsForm(row);
+    }
+
+    private async Task SaveSettingsAsync()
+    {
+        if (_settings is not { } st)
+            return;
+        _busy = true;
+        _error = await TryAsync(() => Wms.Inventory.UpdateStockSettingsAsync(st.Row.SiteId, st.Row.ItemId, st.Bin, st.ReorderPoint), "Ubicación y mínimo guardados.");
+        _busy = false;
+        if (_error is null)
+            CloseModals();
+    }
+
+    // ---------- Exportar ----------
+
+    private async Task ExportAsync()
+    {
+        try
+        {
+            var csv = await Wms.Inventory.ExportStockCsvAsync(CurrentQuery());
+            var path = await Exporter.ExportAsync($"inventario-{DateTime.Now:yyyyMMdd-HHmm}.csv", csv);
+            Toasts.Success($"Exportado: {Path.GetFileName(path)}");
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error($"No se pudo exportar: {ex.Message}");
+        }
+    }
+
+    private void CloseModals()
+    {
+        _adjust = null;
+        _transfer = null;
+        _settings = null;
+        _error = null;
+        if (AdjustQuery == 1)
+            Nav.NavigateTo("inventario", replace: true);
+    }
+
+    private static Guid? ParseGuid(object? value) => Guid.TryParse(value?.ToString(), out var g) ? g : null;
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
+    }
+}

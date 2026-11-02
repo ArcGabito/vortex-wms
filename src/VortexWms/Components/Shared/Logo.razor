@@ -1,0 +1,23 @@
+@* Marca: caja isométrica (cara superior naranja con cinta) + "vortexwms". *@
+<div class="logo @(OnDark ? "on-dark" : "")">
+    <svg width="@Size" height="@Size" viewBox="0 0 48 48" aria-hidden="true">
+        <g stroke="@Gap" stroke-width="1.6" stroke-linejoin="round">
+            <path d="M24 5 L41 15 L24 25 L7 15 Z" fill="#FF5B14" />
+            <path d="M7 15 L24 25 L24 44 L7 34 Z" fill="@(OnDark ? "#FFFFFF" : "#1C120D")" />
+            <path d="M24 25 L41 15 L41 34 L24 44 Z" fill="@(OnDark ? "#FFC2A3" : "#4A362C")" />
+        </g>
+        <path d="M15.5 10 L32.5 20" stroke="@Gap" stroke-width="2" stroke-linecap="round" />
+    </svg>
+    @if (!IconOnly)
+    {
+        <span class="word">vortex<b>wms</b></span>
+    }
+</div>
+
+@code {
+    [Parameter] public int Size { get; set; } = 34;
+    [Parameter] public bool OnDark { get; set; }
+    [Parameter] public bool IconOnly { get; set; }
+
+    private string Gap => OnDark ? "#1C120D" : "#FFFFFF";
+}

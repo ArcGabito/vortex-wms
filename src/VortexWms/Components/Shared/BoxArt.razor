@@ -1,0 +1,42 @@
+@* Ilustración: caja de cartón con un pin de ubicación naranja (como la tarjeta lateral del diseño). *@
+<svg class="@Class" viewBox="0 0 220 170" aria-hidden="true">
+    <defs>
+        <linearGradient id="bx-top" x1="0" y1="0" x2="1" y2="1">
+            <stop offset="0" stop-color="#F6C48E" />
+            <stop offset="1" stop-color="#E9A35C" />
+        </linearGradient>
+        <linearGradient id="bx-left" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#E39A50" />
+            <stop offset="1" stop-color="#C97A35" />
+        </linearGradient>
+        <linearGradient id="bx-right" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#F0B06C" />
+            <stop offset="1" stop-color="#D98D44" />
+        </linearGradient>
+        <linearGradient id="pin" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stop-color="#FF8A4C" />
+            <stop offset="1" stop-color="#F24E0F" />
+        </linearGradient>
+    </defs>
+    <ellipse cx="104" cy="150" rx="70" ry="9" fill="#1C120D" opacity=".08" />
+    <g opacity="@(OnDark ? ".14" : ".55")" fill="#D9D3CE">
+        <ellipse cx="34" cy="30" rx="16" ry="6" />
+        <ellipse cx="46" cy="25" rx="12" ry="7" />
+        <ellipse cx="182" cy="34" rx="15" ry="5.5" />
+        <ellipse cx="172" cy="29" rx="11" ry="6.5" />
+    </g>
+    <path d="M104 40 L160 66 L104 92 L48 66 Z" fill="url(#bx-top)" />
+    <path d="M48 66 L104 92 L104 150 L48 124 Z" fill="url(#bx-left)" />
+    <path d="M104 92 L160 66 L160 124 L104 150 Z" fill="url(#bx-right)" />
+    <path d="M76 53 L132 79 L132 96 L124 92 L124 83 L76 61 Z" fill="#F7D7B0" opacity=".9" />
+    <path d="M58 104 l20 9 M58 111 l14 6.5" stroke="#B66A2A" stroke-width="3" stroke-linecap="round" opacity=".55" />
+    <g transform="translate(150 70)">
+        <path d="M18 0 C28 0 36 8 36 18 C36 31 18 48 18 48 C18 48 0 31 0 18 C0 8 8 0 18 0 Z" fill="url(#pin)" />
+        <circle cx="18" cy="18" r="7" fill="#fff" />
+    </g>
+</svg>
+
+@code {
+    [Parameter] public string? Class { get; set; }
+    [Parameter] public bool OnDark { get; set; }
+}

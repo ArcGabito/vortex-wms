@@ -1,0 +1,30 @@
+@* Estado con punto + texto (el color nunca va solo). Tonos: good, info, warn, bad, neutral, accent. *@
+<span class="pill @Tone @(Plain ? "plain" : "")">@Text</span>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = "";
+    [Parameter] public string Tone { get; set; } = "neutral";
+    [Parameter] public bool Plain { get; set; }
+
+    public static (string Text, string Tone) ForStock(StockStatus status) => status switch
+    {
+        StockStatus.InStock => ("En stock", "good"),
+        StockStatus.Low => ("Stock bajo", "warn"),
+        _ => ("Agotado", "bad"),
+    };
+
+    public static (string Text, string Tone) ForOrder(string status) => (Fmt.OrderStatus(status), status switch
+    {
+        OrderStatuses.Pending => "info",
+        OrderStatuses.Picking => "warn",
+        OrderStatuses.Dispatched => "good",
+        _ => "neutral",
+    });
+
+    public static (string Text, string Tone) ForReceipt(string status) => (Fmt.ReceiptStatus(status), status switch
+    {
+        ReceiptStatuses.Expected => "info",
+        ReceiptStatuses.Received => "good",
+        _ => "neutral",
+    });
+}

@@ -1,0 +1,113 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject AppSession Session
+@inject NavigationManager Nav
+
+@if (Session.IsSignedIn)
+{
+    <div class="app">
+        <div class="sidebar-backdrop @(_menuOpen ? "open" : "")" @onclick="() => _menuOpen = false"></div>
+        <aside class="sidebar @(_menuOpen ? "open" : "")">
+            <div class="brand"><Logo /></div>
+            <nav class="nav" @onclick="() => _menuOpen = false">
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><Icon Name="home" />Panel</NavLink>
+                <NavLink class="nav-link" href="inventario"><Icon Name="boxes" />Inventario</NavLink>
+                <NavLink class="nav-link" href="recepciones">
+                    <Icon Name="inbox" />Recepciones
+                    @if (_receipts > 0)
+                    {
+                        <span class="count">@_receipts</span>
+                    }
+                </NavLink>
+                <NavLink class="nav-link" href="pedidos">
+                    <Icon Name="truck" />Pedidos
+                    @if (_orders > 0)
+                    {
+                        <span class="count">@_orders</span>
+                    }
+                </NavLink>
+                <NavLink class="nav-link" href="movimientos"><Icon Name="arrows" />Movimientos</NavLink>
+
+                <div class="nav-section">Catálogo</div>
+                <NavLink class="nav-link" href="articulos"><Icon Name="tag" />Artículos</NavLink>
+                <NavLink class="nav-link" href="sedes"><Icon Name="warehouse" />Almacenes</NavLink>
+                <NavLink class="nav-link" href="socios"><Icon Name="users" />Contactos</NavLink>
+
+                <div class="nav-section">Sistema</div>
+                <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />Configuración</NavLink>
+            </nav>
+
+            <div class="promo">
+                <BoxArt Class="box-art" />
+                <h4>Libre y de código abierto</h4>
+                <p>Vortex WMS es AGPL-3.0. Hecho en Perú para LATAM y el mundo.</p>
+                <button class="btn btn-accent btn-sm" @onclick="OpenRepoAsync">Contribuir</button>
+            </div>
+        </aside>
+
+        <div class="main">
+            <TopBar OnMenu="() => _menuOpen = !_menuOpen" />
+            <div class="content">
+                <ErrorBoundary @ref="_boundary">
+                    @Body
+                </ErrorBoundary>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private bool _menuOpen;
+    private int _orders, _receipts;
+    private ErrorBoundary? _boundary;
+
+    protected override void OnInitialized()
+    {
+        Session.Changed += OnSessionChanged;
+        Session.DataChanged += OnDataChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Session.IsSignedIn)
+        {
+            Nav.NavigateTo("login", replace: true);
+            return;
+        }
+        await LoadCountsAsync();
+    }
+
+    private async Task LoadCountsAsync()
+    {
+        if (Session.Workspace is not { } wms)
+            return;
+        var summary = await wms.Inventory.GetDashboardAsync();
+        _orders = summary.OrdersOpen;
+        _receipts = summary.ReceiptsExpected;
+    }
+
+    private void OnSessionChanged() => _ = InvokeAsync(() =>
+    {
+        if (!Session.IsSignedIn)
+            Nav.NavigateTo("login", replace: true);
+        StateHasChanged();
+    });
+
+    private void OnDataChanged() => _ = InvokeAsync(async () =>
+    {
+        await LoadCountsAsync();
+        StateHasChanged();
+    });
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) => _boundary?.Recover();
+
+    private static Task OpenRepoAsync() => Launcher.Default.OpenAsync("https://github.com/ArcGabito/vortex-wms");
+
+    public void Dispose()
+    {
+        Session.Changed -= OnSessionChanged;
+        Session.DataChanged -= OnDataChanged;
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+}
