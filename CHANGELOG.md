@@ -7,6 +7,14 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 
 ## [Unreleased]
 
+### Added
+- `CONTRIBUTING.md`: entorno de desarrollo, flujo de PR con `main` protegida, convenciones y reglas del inventario.
+- `SECURITY.md`: cómo reportar vulnerabilidades en privado y qué cubre.
+
+### Changed
+- Documentación reorganizada en `docs/`: el README queda como presentación y el detalle pasa a
+  `docs/DESCRIPTION.md`; `SISTEMAS.md` y `THIRD-PARTY-NOTICES.md` se movieron a `docs/`.
+
 ## [0.1.0] - 2026-11-01
 
 ### Added
