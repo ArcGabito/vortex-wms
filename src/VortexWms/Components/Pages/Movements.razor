@@ -1,0 +1,176 @@
+@page "/movimientos"
+@inherits WmsPage
+
+<SectionContent SectionName="page-title">Movimientos</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Kardex</h2>
+            <p>Cada entrada y salida queda registrada con su saldo, quién la hizo y de dónde vino. No se edita ni se borra.</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field search">
+            <label>Buscar</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="SKU o documento" value="@_search" @oninput="OnSearchInput" />
+            </div>
+        </div>
+        <div class="field">
+            <label>Sede</label>
+            <select class="select" value="@_site" @onchange="async e => { _site = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
+                <option value="">Todas</option>
+                @foreach (var site in _sites)
+                {
+                    <option value="@site.Id">@site.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field">
+            <label>Tipo</label>
+            <select class="select" value="@_kind" @onchange="async e => { _kind = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
+                <option value="">Todos</option>
+                @foreach (var kind in MovementKinds.All)
+                {
+                    <option value="@kind">@Fmt.MovementKind(kind)</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="arrows" Title="Sin movimientos" Text="@(_search != "" || _site != "" || _kind != "" ? "Nada coincide con los filtros." : "Aún no hay entradas ni salidas registradas.")" />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Fecha</th>
+                            <th>Artículo</th>
+                            <th>Movimiento</th>
+                            <th>Sede</th>
+                            <th class="num">Cantidad</th>
+                            <th class="num">Saldo</th>
+                            <th>Usuario</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var m in page.Items)
+                        {
+                            <tr @key="m.Id">
+                                <td>
+                                    <div class="two-line">
+                                        <span class="t1">@Fmt.Date(m.OccurredAt)</span>
+                                        <span class="t2">@m.OccurredAt.ToLocalTime().ToString("HH:mm", Fmt.Culture)</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="cell-main">
+                                        <Avatar Text="@m.ItemName" Size="32" />
+                                        <div class="two-line"><span class="t1">@m.ItemName</span><span class="t2">#@m.Sku</span></div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="two-line">
+                                        <span class="t1" style="font-weight:600">@Fmt.MovementKind(m.Kind)</span>
+                                        <span class="t2">@Detail(m)</span>
+                                    </div>
+                                </td>
+                                <td><span class="muted">@m.SiteName</span></td>
+                                <td class="num"><span class="@(m.Quantity >= 0 ? "qty-pos" : "qty-neg")">@(m.Quantity > 0 ? "+" : "")@Fmt.Qty(m.Quantity)</span></td>
+                                <td class="num strong">@Fmt.Qty(m.OnHandAfter)</td>
+                                <td>
+                                    <div class="two-line">
+                                        <span class="t1" style="font-weight:600">@(m.UserName ?? "—")</span>
+                                        @if (m.Note is not null)
+                                        {
+                                            <span class="t2" title="@m.Note">@m.Note</span>
+                                        }
+                                    </div>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="movimientos" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+</div>
+
+@code {
+    [SupplyParameterFromQuery(Name = "q")] public string? Query { get; set; }
+
+    private const int PageSize = 15;
+    private PagedResult<MovementRow>? _result;
+    private IReadOnlyList<SiteRow> _sites = [];
+    private string _search = "", _site = "", _kind = "";
+    private string? _appliedQuery;
+    private bool _queryApplied;
+    private int _page = 1;
+    private CancellationTokenSource? _debounce;
+
+    protected override void OnInitialized() => ApplyQuery();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ApplyQuery())
+            await ReloadAsync();
+    }
+
+    private bool ApplyQuery()
+    {
+        if (_queryApplied && Query == _appliedQuery)
+            return false;
+        (_queryApplied, _appliedQuery, _search, _page) = (true, Query, Query ?? "", 1);
+        return true;
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _sites = await Wms.Master.GetSitesAsync();
+        var query = new MovementQuery(_search, Guid.TryParse(_site, out var site) ? site : null, _kind == "" ? null : _kind, _page, PageSize);
+        _result = await Wms.Inventory.GetMovementsAsync(query);
+        if (_result.Items.Count == 0 && _page > 1)
+        {
+            _page = _result.Pages;
+            _result = await Wms.Inventory.GetMovementsAsync(query with { Page = _page });
+        }
+    }
+
+    private static string Detail(MovementRow m) => string.Join(" · ", new[]
+    {
+        m.Kind == MovementKinds.Adjustment ? Fmt.Reason(m.Reason) : null,
+        m.Reference,
+    }.Where(s => !string.IsNullOrEmpty(s)));
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _page = 1;
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
+    }
+}

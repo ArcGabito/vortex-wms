@@ -1,0 +1,120 @@
+@page "/"
+@inherits WmsPage
+
+<SectionContent SectionName="page-title">Panel</SectionContent>
+
+@if (_summary is { } s)
+{
+    <div class="stat-strip">
+        <StatTile Icon="tag" Label="Artículos" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, "categoría", "categorías"))" />
+        <StatTile Icon="boxes" Label="Unidades" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="vs. hace 30 días" />
+        <StatTile Icon="clipboard" Label="Por despachar" Value="@Fmt.Compact(s.OrdersOpen)" Hint="@($"{s.OrdersPicking} en preparación")" />
+        <StatTile Icon="truck" Label="Despachados" Value="@Fmt.Compact(s.Dispatched30d)" Delta="s.DispatchedChangePct" Hint="últimos 30 días" />
+        <StatTile Icon="alert" Label="Stock bajo" Value="@Fmt.Compact(s.LowStock)" Hint="@($"{s.OutOfStock} agotados")" />
+    </div>
+}
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Hola, @FirstName</h2>
+            <p>@Session.Session?.Access.OrganizationName · Así está tu almacén hoy.</p>
+        </div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <a class="btn btn-outline" href="inventario?ajustar=1"><Icon Name="edit" Size="18" />Ajustar stock</a>
+            <a class="btn btn-dark" href="recepciones?nueva=1"><Icon Name="plus" Size="18" />Nueva recepción</a>
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-head">
+                <div>
+                    <h3>Movimientos recientes</h3>
+                    <div class="sub">Lo último que entró y salió del almacén</div>
+                </div>
+                <a class="btn btn-sm" href="movimientos">Ver kardex</a>
+            </div>
+            <div class="card-body" style="padding-top:12px">
+                @if (_movements.Count == 0)
+                {
+                    <EmptyState Icon="arrows" Title="Aún no hay movimientos" Text="Registra una recepción para empezar a llevar el stock." />
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="data" style="min-width:560px">
+                            <thead>
+                                <tr><th>Artículo</th><th>Tipo</th><th>Sede</th><th class="num">Cantidad</th><th class="num">Cuándo</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var m in _movements)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="two-line"><span class="t1">@m.ItemName</span><span class="t2">#@m.Sku</span></div>
+                                        </td>
+                                        <td><span class="muted">@Fmt.MovementKind(m.Kind)</span></td>
+                                        <td><span class="muted">@m.SiteName</span></td>
+                                        <td class="num"><span class="@(m.Quantity >= 0 ? "qty-pos" : "qty-neg")">@(m.Quantity > 0 ? "+" : "")@Fmt.Qty(m.Quantity)</span></td>
+                                        <td class="num muted">@Fmt.Ago(m.OccurredAt)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head">
+                <div>
+                    <h3>Requiere atención</h3>
+                    <div class="sub">Artículos agotados o bajo su mínimo</div>
+                </div>
+            </div>
+            <div class="card-body">
+                @if (_summary is { } v)
+                {
+                    <div class="list-row">
+                        <div class="stat-icon" style="width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--accent-ink)"><Icon Name="wallet" Size="18" /></div>
+                        <div class="two-line"><span class="t2">Valor del inventario</span><span class="t1" style="font-size:18px">@Fmt.Money(v.StockValue, v.CurrencyCode)</span></div>
+                    </div>
+                }
+                @if (_low.Count == 0)
+                {
+                    <EmptyState Icon="package-check" Title="Todo en orden" Text="Ningún artículo está agotado ni bajo su mínimo." />
+                }
+                @foreach (var r in _low)
+                {
+                    var (text, tone) = StatusPill.ForStock(r.Status);
+                    <div class="list-row">
+                        <Avatar Text="@r.ItemName" Size="36" />
+                        <div class="two-line"><span class="t1">@r.ItemName</span><span class="t2">@r.SiteName · disp. @Fmt.Qty(r.Available)@(r.ReorderPoint is { } min ? $" / mín. {Fmt.Qty(min)}" : "")</span></div>
+                        <span class="end"><StatusPill Text="@text" Tone="@tone" /></span>
+                    </div>
+                }
+                @if (_low.Count > 0)
+                {
+                    <a class="btn btn-sm btn-block" style="margin-top:12px" href="inventario?estado=Low">Ver todo el stock bajo</a>
+                }
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private DashboardSummary? _summary;
+    private IReadOnlyList<MovementRow> _movements = [];
+    private IReadOnlyList<StockRow> _low = [];
+
+    private string FirstName => Session.UserName.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault() ?? "";
+
+    protected override async Task LoadAsync()
+    {
+        _summary = await Wms.Inventory.GetDashboardAsync();
+        _movements = (await Wms.Inventory.GetMovementsAsync(new MovementQuery(PageSize: 7))).Items;
+        _low = await Wms.Inventory.GetLowStockAsync(6);
+    }
+}

@@ -1,0 +1,384 @@
+@page "/recepciones"
+@inherits WmsPage
+
+<SectionContent SectionName="page-title">Recepciones</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>Recepción de mercadería</h2>
+            <p>Las órdenes de compra del ERP llegan aquí como recepciones por recibir. También puedes registrar una entrada directa.</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field search">
+            <label>Buscar</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="N.º o proveedor" value="@_search" @oninput="OnSearchInput" />
+            </div>
+        </div>
+        <div class="field" style="width:auto">
+            <label>Estado</label>
+            <div class="segmented">
+                @foreach (var (value, label) in Tabs)
+                {
+                    <button class="@(_status == value ? "on" : "")" @onclick="() => SetStatusAsync(value)">@label</button>
+                }
+            </div>
+        </div>
+        <div class="actions">
+            <button class="btn btn-dark" @onclick="OpenDirect"><Icon Name="plus" Size="18" />Nueva recepción</button>
+        </div>
+    </div>
+
+    @if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="inbox" Title="@(_status == ReceiptStatuses.Expected ? "No hay recepciones por recibir" : "No hay recepciones")"
+                        Text="Cuando el ERP emita una orden de compra, aparecerá aquí lista para recibir." />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr>
+                            <th>Recepción</th>
+                            <th>Proveedor</th>
+                            <th>Sede</th>
+                            <th class="num">Unidades</th>
+                            <th>Fecha</th>
+                            <th>Estado</th>
+                            <th class="actions-col">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in page.Items)
+                        {
+                            var (text, tone) = StatusPill.ForReceipt(r.Status);
+                            <tr @key="r.Id">
+                                <td>
+                                    <div class="cell-main">
+                                        <div class="stat-icon" style="width:34px;height:34px;border-radius:10px"><Icon Name="inbox" Size="16" /></div>
+                                        <div class="two-line"><span class="t1">@r.Number</span><span class="t2">@(r.PurchaseOrderId is null ? "Entrada directa" : "Orden de compra del ERP")</span></div>
+                                    </div>
+                                </td>
+                                <td><span class="@(r.SupplierName is null ? "faint" : "")">@(r.SupplierName ?? "Sin proveedor")</span></td>
+                                <td><span class="muted">@r.SiteName</span></td>
+                                <td class="num">
+                                    <div class="two-line" style="align-items:flex-end">
+                                        <span class="t1">@Fmt.Qty(r.Status == ReceiptStatuses.Received ? r.ReceivedUnits : r.ExpectedUnits)</span>
+                                        <span class="t2">@r.LineCount @(r.LineCount == 1 ? "artículo" : "artículos")</span>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="two-line">
+                                        <span class="t1">@Fmt.Date(r.ReceivedAt ?? r.CreatedAt)</span>
+                                        <span class="t2">@(r.ReceivedAt is null ? "Emitida" : "Recibida") @Fmt.Ago(r.ReceivedAt ?? r.CreatedAt)</span>
+                                    </div>
+                                </td>
+                                <td><StatusPill Text="@text" Tone="@tone" /></td>
+                                <td class="actions-col">
+                                    <KebabMenu>
+                                        @if (r.Status == ReceiptStatuses.Expected)
+                                        {
+                                            <button @onclick="() => OpenReceive(r)"><Icon Name="package-check" Size="18" />Recibir</button>
+                                        }
+                                        <button @onclick="() => OpenDetail(r)"><Icon Name="eye" Size="18" />Ver detalle</button>
+                                        @if (r.Status == ReceiptStatuses.Expected)
+                                        {
+                                            <hr />
+                                            <button class="danger" @onclick="() => _cancel = r"><Icon Name="ban" Size="18" />Anular</button>
+                                        }
+                                    </KebabMenu>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="recepciones" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+</div>
+
+@if (_direct is { } d)
+{
+    <Modal Title="Nueva recepción" Subtitle="Entrada de mercadería sin orden de compra. Sube el stock al guardar." Size="lg" Error="@_error" OnClose="Close">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>Sede que recibe</label>
+                    <select class="select" value="@d.SiteId" @onchange="e => d.SiteId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">Elige la sede</option>
+                        @foreach (var site in _sites)
+                        {
+                            <option value="@site.Id">@site.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>Proveedor (opcional)</label>
+                    <select class="select" value="@d.SupplierId" @onchange="e => d.SupplierId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">Sin proveedor</option>
+                        @foreach (var supplier in _suppliers)
+                        {
+                            <option value="@supplier.Id">@supplier.Label@(supplier.Detail is null ? "" : $" · {supplier.Detail}")</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <LineEditor Changed="StateHasChanged" Lines="d.Lines" ShowPrice PriceLabel="Costo unit." />
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="Close">Cancelar</button>
+            <button class="btn btn-dark" disabled="@(_busy || d.Lines.Count == 0)" @onclick="SaveDirectAsync">Registrar recepción</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_receive is { } rc)
+{
+    <Modal Title="@($"Recibir {rc.Receipt.Number}")" Subtitle="@($"{rc.Receipt.SupplierName ?? "Sin proveedor"} · {rc.Receipt.SiteName}. Ajusta lo que realmente llegó.")"
+           Size="lg" Error="@_error" OnClose="Close">
+        <ChildContent>
+            <div class="lines">
+                <div class="line" style="background:transparent;padding-top:0;padding-bottom:0">
+                    <span class="field-label">Artículo</span>
+                    <span class="field-label">Recibido</span>
+                    <span></span>
+                </div>
+                @foreach (var line in rc.Lines)
+                {
+                    <div class="line" @key="line.Row.LineNo">
+                        <div class="cell-main">
+                            <Avatar Text="@line.Row.ItemName" Size="34" />
+                            <div class="two-line">
+                                <span class="t1">@line.Row.ItemName</span>
+                                <span class="t2">#@line.Row.Sku · esperado @Fmt.Qty(line.Row.ExpectedQty)
+                                    @if (line.Received != line.Row.ExpectedQty)
+                                    {
+                                        <span class="warn-text"> · diferencia @(line.Received > line.Row.ExpectedQty ? "+" : "")@Fmt.Qty(line.Received - line.Row.ExpectedQty)</span>
+                                    }
+                                </span>
+                            </div>
+                        </div>
+                        <input class="control" type="number" min="0" step="any" @bind="line.Received" @bind:event="oninput" aria-label="Cantidad recibida" />
+                        <button class="btn btn-ghost icon-btn sm" title="Igual a lo esperado" aria-label="Igual a lo esperado" @onclick="() => line.Received = line.Row.ExpectedQty"><Icon Name="check" Size="16" /></button>
+                    </div>
+                }
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="Close">Cancelar</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveReceiveAsync">Confirmar recepción</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_detail is { } dt)
+{
+    <Modal Title="@dt.Receipt.Number" Subtitle="@($"{dt.Receipt.SupplierName ?? "Sin proveedor"} · {dt.Receipt.SiteName}")" Size="lg" OnClose="Close">
+        <ChildContent>
+            <div class="table-wrap">
+                <table class="data" style="min-width:520px">
+                    <thead>
+                        <tr><th>Artículo</th><th class="num">Esperado</th><th class="num">Recibido</th><th class="num">Costo unit.</th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in dt.Lines)
+                        {
+                            <tr>
+                                <td><div class="two-line"><span class="t1">@l.ItemName</span><span class="t2">#@l.Sku</span></div></td>
+                                <td class="num">@Fmt.Qty(l.ExpectedQty)</td>
+                                <td class="num strong">@Fmt.Qty(l.ReceivedQty)</td>
+                                <td class="num">@(l.UnitCost is { } cost ? cost.ToString("#,0.00", Fmt.Culture) : "—")</td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="Close">Cerrar</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_cancel is { } cancel)
+{
+    <Modal Title="¿Anular la recepción?" Subtitle="@($"{cancel.Number} dejará de estar por recibir. No mueve stock.")" OnClose="Close">
+        <Footer>
+            <button class="btn" @onclick="Close">Volver</button>
+            <button class="btn btn-danger" disabled="@_busy" @onclick="CancelAsync">Anular recepción</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class DirectForm
+    {
+        public Guid? SiteId { get; set; }
+        public Guid? SupplierId { get; set; }
+        public List<LineEditor.LineDraft> Lines { get; } = [];
+    }
+
+    private sealed class ReceiveLine(ReceiptLineRow row)
+    {
+        public ReceiptLineRow Row { get; } = row;
+        public decimal Received { get; set; } = row.ExpectedQty;
+    }
+
+    private sealed record ReceiveForm(ReceiptRow Receipt, List<ReceiveLine> Lines);
+    private sealed record DetailView(ReceiptRow Receipt, IReadOnlyList<ReceiptLineRow> Lines);
+
+    private static readonly (string Value, string Label)[] Tabs =
+    [
+        (ReceiptStatuses.Expected, "Por recibir"), (ReceiptStatuses.Received, "Recibidas"), (ReceiptStatuses.Cancelled, "Anuladas"), ("", "Todas"),
+    ];
+
+    [SupplyParameterFromQuery(Name = "nueva")] public int? NewQuery { get; set; }
+
+    private const int PageSize = 10;
+    private PagedResult<ReceiptRow>? _result;
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<Option> _suppliers = [];
+    private string _search = "", _status = ReceiptStatuses.Expected;
+    private int _page = 1;
+    private bool _statusChosen;
+    private CancellationTokenSource? _debounce;
+
+    private DirectForm? _direct;
+    private ReceiveForm? _receive;
+    private DetailView? _detail;
+    private ReceiptRow? _cancel;
+    private string? _error;
+    private bool _busy;
+
+    protected override async Task LoadAsync()
+    {
+        _sites = await Wms.Master.GetSitesAsync(activeOnly: true);
+        _suppliers = await Wms.Master.GetPartyOptionsAsync(suppliers: true);
+        _result = await Wms.Receipts.GetReceiptsAsync(_search, _status, _page, PageSize);
+        // Sin nada por recibir, mostrar todas para que la pantalla no parezca vacía.
+        if (!_statusChosen && _result.Total == 0 && _search == "")
+        {
+            _statusChosen = true;
+            _status = "";
+            _result = await Wms.Receipts.GetReceiptsAsync(_search, _status, _page, PageSize);
+        }
+        if (_result.Items.Count == 0 && _page > 1)
+        {
+            _page = _result.Pages;
+            _result = await Wms.Receipts.GetReceiptsAsync(_search, _status, _page, PageSize);
+        }
+    }
+
+    protected override void OnParametersSet()
+    {
+        if (NewQuery == 1 && _direct is null)
+            OpenDirect();
+    }
+
+    private async Task SetStatusAsync(string status)
+    {
+        _statusChosen = true;
+        _status = status;
+        _page = 1;
+        await ReloadAsync();
+    }
+
+    private async Task OnSearchInput(ChangeEventArgs e)
+    {
+        _search = e.Value?.ToString() ?? "";
+        _debounce?.Cancel();
+        _debounce = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(220, _debounce.Token);
+            _page = 1;
+            await ReloadAsync();
+        }
+        catch (TaskCanceledException)
+        {
+        }
+    }
+
+    private void OpenDirect()
+    {
+        _error = null;
+        _direct = new DirectForm { SiteId = Session.DefaultSiteId ?? _sites.FirstOrDefault()?.Id };
+    }
+
+    private async Task SaveDirectAsync()
+    {
+        if (_direct is not { } d)
+            return;
+        if (d.SiteId is not { } site)
+        {
+            _error = "Elige la sede que recibe.";
+            return;
+        }
+        _busy = true;
+        string? number = null;
+        _error = await TryAsync(async () => number = await Wms.Receipts.ReceiveDirectAsync(site, d.SupplierId, d.Lines.Select(l => l.ToDocumentLine()).ToList()));
+        _busy = false;
+        if (_error is null)
+        {
+            Toasts.Success($"Recepción {number} registrada. El stock ya está disponible.");
+            Close();
+        }
+    }
+
+    private async Task OpenReceive(ReceiptRow receipt)
+    {
+        _error = null;
+        var lines = await Wms.Receipts.GetLinesAsync(receipt.Id);
+        _receive = new ReceiveForm(receipt, lines.Select(l => new ReceiveLine(l)).ToList());
+    }
+
+    private async Task SaveReceiveAsync()
+    {
+        if (_receive is not { } rc)
+            return;
+        _busy = true;
+        _error = await TryAsync(() => Wms.Receipts.ReceiveExpectedAsync(rc.Receipt.Id, rc.Lines.ToDictionary(l => l.Row.LineNo, l => l.Received)),
+            $"{rc.Receipt.Number} recibida. El stock ya está disponible.");
+        _busy = false;
+        if (_error is null)
+            Close();
+    }
+
+    private async Task OpenDetail(ReceiptRow receipt) =>
+        _detail = new DetailView(receipt, await Wms.Receipts.GetLinesAsync(receipt.Id));
+
+    private async Task CancelAsync()
+    {
+        if (_cancel is not { } receipt)
+            return;
+        _busy = true;
+        await RunAsync(() => Wms.Receipts.CancelAsync(receipt.Id), $"{receipt.Number} anulada.");
+        _busy = false;
+        Close();
+    }
+
+    private void Close()
+    {
+        _direct = null;
+        _receive = null;
+        _detail = null;
+        _cancel = null;
+        _error = null;
+        if (NewQuery == 1)
+            Nav.NavigateTo("recepciones", replace: true);
+    }
+
+    public override void Dispose()
+    {
+        _debounce?.Cancel();
+        base.Dispose();
+    }
+}

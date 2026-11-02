@@ -1,0 +1,44 @@
+@* Líneas de un pedido: qué sacar del almacén y si alcanza el stock de la sede. *@
+<div class="table-wrap">
+    <table class="data" style="min-width:520px">
+        <thead>
+            <tr>
+                <th>Artículo</th>
+                <th class="num">Cantidad</th>
+                @if (ShowStock)
+                {
+                    <th class="num">En sede</th>
+                }
+                @if (ShowPrice)
+                {
+                    <th class="num">Precio</th>
+                    <th class="num">Subtotal</th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var l in Lines)
+            {
+                <tr @key="l.LineNo">
+                    <td><div class="two-line"><span class="t1">@l.ItemName</span><span class="t2">#@l.Sku</span></div></td>
+                    <td class="num strong">@Fmt.Qty(l.Quantity)</td>
+                    @if (ShowStock)
+                    {
+                        <td class="num"><span class="@(l.OnHand < l.Quantity ? "warn-text" : "muted")">@Fmt.Qty(l.OnHand)</span></td>
+                    }
+                    @if (ShowPrice)
+                    {
+                        <td class="num">@l.UnitPrice.ToString("#,0.00", Fmt.Culture)</td>
+                        <td class="num strong">@((l.Quantity * l.UnitPrice).ToString("#,0.00", Fmt.Culture))</td>
+                    }
+                </tr>
+            }
+        </tbody>
+    </table>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<OrderLineRow> Lines { get; set; } = [];
+    [Parameter] public bool ShowStock { get; set; }
+    [Parameter] public bool ShowPrice { get; set; }
+}
