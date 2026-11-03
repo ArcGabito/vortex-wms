@@ -7,7 +7,7 @@
 @if (_summary is { } s)
 {
     <div class="stat-strip">
-        <StatTile Icon="boxes" Label="Unidades" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="vs. hace 30 días" />
+        <StatTile Icon="boxes" Label="Unidades" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="@(s.UnitsChangePct is null ? null : "vs. hace 30 días")" />
         <StatTile Icon="wallet" Label="Valor" Value="@Fmt.MoneyCompact(s.StockValue, s.CurrencyCode)" Hint="a precio de venta" />
         <StatTile Icon="tag" Label="Artículos" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, "categoría", "categorías"))" />
         <StatTile Icon="alert" Label="Stock bajo" Value="@Fmt.Compact(s.LowStock)" Hint="bajo su mínimo" />

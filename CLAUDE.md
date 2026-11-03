@@ -9,6 +9,7 @@ textos de la interfaz y documentación en español (es-PE).
 dotnet test tests/VortexWms.Core.Tests                                   # pruebas del dominio y la sincronización
 VORTEX_HUB_URL=http://localhost:5299/ dotnet test tests/VortexWms.Core.Tests   # + prueba contra un hub real
 dotnet build src/VortexWms -f net10.0-windows10.0.19041.0                # app en Windows (también -f net10.0-android)
+dotnet run --project src/VortexWms -f net10.0-windows10.0.19041.0        # compila y abre (en Windows, -t:Run no compila)
 scripts/pack-sdk.sh   |   ./scripts/pack-sdk.ps1                         # SDK del hub -> packages/vortex-sdk
 ```
 

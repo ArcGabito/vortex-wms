@@ -158,7 +158,7 @@
 @code {
     private const string SourceUrl = "https://github.com/ArcGabito/vortex-wms";
     private const string IssuesUrl = SourceUrl + "/issues";
-    private static readonly string Version = AppInfo.Current.VersionString;
+    private static readonly string Version = AppInfo.Current.Version.ToString(3);
 
     private IReadOnlyList<VortexFailedEntry> _failed = [];
     private IReadOnlyList<SiteRow> _sites = [];

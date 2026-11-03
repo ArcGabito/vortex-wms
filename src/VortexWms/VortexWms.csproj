@@ -47,6 +47,9 @@
 		<!-- Splash Screen -->
 		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#1C120D" BaseSize="128,128" />
 
+		<!-- Ícono nativo de la barra de título. Las imágenes de la interfaz Blazor van en wwwroot/img. -->
+		<MauiImage Include="Resources\Images\titlebar_box.svg" BaseSize="16,16" />
+
 		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
 		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
 	</ItemGroup>

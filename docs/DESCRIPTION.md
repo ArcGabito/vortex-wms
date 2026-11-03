@@ -13,7 +13,8 @@
   empresa comparten el stock.
 - **Lector de código de barras**: escanear y Enter agrega el artículo en recepciones, pedidos y transferencias.
 
-Cómo se conecta con el hub y con los demás sistemas: [INTEGRACION.md](INTEGRACION.md).
+Cómo se conecta con el hub y con los demás sistemas: [INTEGRACION.md](INTEGRACION.md). Lo que viene, por fases:
+[ROADMAP.md](ROADMAP.md).
 
 ## Estructura
 
@@ -54,7 +55,7 @@ scripts/pack-sdk.*      Empaquetan el SDK del hub en packages/vortex-sdk
 3. **Ejecutar la app**:
 
    ```bash
-   dotnet build src/VortexWms -t:Run -f net10.0-windows10.0.19041.0   # Windows
+   dotnet run --project src/VortexWms -f net10.0-windows10.0.19041.0  # Windows (compila y abre)
    dotnet build src/VortexWms -t:Run -f net10.0-android               # Emulador Android (usa http://10.0.2.2:5299)
    dotnet build src/VortexWms -t:Run -f net10.0-maccatalyst           # macOS
    ```
