@@ -82,4 +82,7 @@ El WMS se suscribe también a sus propios eventos (`IncludeOwnEvents = true`):
 - Empezar la preparación (picking) y cancelar pedidos o anular recepciones no se replica a otros equipos: el catálogo
   de eventos v1 no tiene `order.cancelled` ni `receipt.cancelled`. Según la sección 10 de la guía, se propondrá en el
   hub en vez de resolverlo con un parche local.
+- Los movimientos de despacho y de recepción usan Ids aleatorios: si dos equipos despachan el mismo pedido (o reciben
+  la misma orden de compra) sin conexión, el stock se mueve dos veces. Se corrige en la fase 0 de
+  [ROADMAP.md](ROADMAP.md).
 - `processed_events` crece sin límite; falta una política de limpieza por antigüedad.

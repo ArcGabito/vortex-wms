@@ -340,9 +340,10 @@ input, select, textarea { font: inherit; color: inherit; }
     padding: 20px 4px;
 }
 
+/* El texto ocupa dos líneas (etiqueta 18px + 2px + valor 26px) para medir lo mismo que el ícono (46px). */
 .stat {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     gap: 12px;
     padding: 2px 14px;
     border-left: 1px solid var(--border);
@@ -362,23 +363,40 @@ input, select, textarea { font: inherit; color: inherit; }
 }
 
 .stat > div { min-width: 0; }
-.stat-label { font-size: 12.5px; font-weight: 600; color: var(--ink); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
-.stat-value {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-    margin-top: 2px;
+.stat-label {
+    font-size: 12.5px;
+    font-weight: 600;
+    line-height: 18px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-.stat-value strong { font-size: 21px; font-weight: 700; letter-spacing: -.01em; }
+/* Valor y variación van juntos. La nota los sigue solo si entra completa: si no, baja a una segunda línea que el alto
+   fijo recorta, en vez de quedar cortada con "…". */
+.stat-value {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px;
+    height: 26px;
+    margin-top: 2px;
+    line-height: 26px;
+    overflow-y: clip;
+}
 
-.delta { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; }
+.stat-figure { display: flex; align-items: baseline; gap: 8px; }
+.stat-value strong { font-size: 21px; font-weight: 700; letter-spacing: -.01em; white-space: nowrap; }
+
+/* Las piezas pequeñas usan un alto de línea menor para no estirar la línea del valor al alinearse por la base. */
+.delta { display: inline-flex; align-items: center; gap: 3px; font-size: 12px; font-weight: 600; line-height: 16px; }
 .delta.good { color: var(--trend-up); }
 .delta.bad { color: var(--trend-down); }
 .delta.flat { color: var(--text-3); }
 
-.stat-hint { font-size: 12px; color: var(--text-2); margin-top: 1px; }
+.stat-hint { white-space: nowrap; font-size: 12px; line-height: 16px; color: var(--text-2); }
 
 /* ---------- Tarjetas y paneles ---------- */
 
@@ -895,7 +913,7 @@ table.data .strong { font-weight: 700; color: var(--ink); }
 
 /* ---------- Inicio de sesión ---------- */
 
-/* Pantalla dividida a todo lo alto de la ventana: presentación a la izquierda y formulario a la derecha. */
+/* Mitad y mitad: portada a la izquierda y, a la derecha, un formulario simple con el logo y los controles del panel. */
 .login {
     min-height: 100%;
     display: grid;
@@ -903,36 +921,68 @@ table.data .strong { font-weight: 700; color: var(--ink); }
     background: var(--surface);
 }
 
-.login-art {
+.login-cover {
     position: relative;
-    padding: 48px 56px;
-    background: radial-gradient(120% 90% at 100% 0%, #3b2117 0%, var(--ink) 60%);
-    color: #fff;
-    display: flex;
-    flex-direction: column;
-    gap: 22px;
+    overflow: hidden;
+    background: #0b0807;
 }
 
-.login-art h2 { font-size: 30px; line-height: 1.15; letter-spacing: -.02em; max-width: 460px; }
-.login-art h2 em { font-style: normal; color: var(--accent-2); }
-.login-art p { color: rgba(255, 255, 255, .7); max-width: 360px; }
-.login-art .art { margin-top: auto; align-self: center; width: 260px; }
-.login-art .chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.login-art .chips span { padding: 6px 12px; border-radius: 14px; background: rgba(255, 255, 255, .08); font-size: 12px; font-weight: 600; }
+.login-cover img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: 50% 40%;
+}
+
+.login-main {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 32px;
+}
 
 .login-form {
     width: 100%;
-    max-width: 460px;
-    justify-self: center;
-    align-self: center;
-    padding: 48px 32px;
+    max-width: 380px;
+    margin-block: auto;
     display: flex;
     flex-direction: column;
-    gap: 18px;
+    gap: 16px;
 }
 
-.login-form h1 { font-size: 26px; }
-.login-form .lead { color: var(--text-2); margin-top: -8px; }
+.login-form > .logo { margin-bottom: 20px; }
+
+.login-form .password { position: relative; }
+.login-form .password .control { padding-right: 46px; }
+
+.login-form .password button {
+    position: absolute;
+    top: 0;
+    right: 0;
+    width: 44px;
+    height: var(--control-h);
+    display: grid;
+    place-items: center;
+    border: 0;
+    background: transparent;
+    color: var(--text-3);
+    cursor: pointer;
+}
+
+.login-form .password button:hover { color: var(--ink); }
+
+.login-form .server {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    font-size: 13px;
+    color: var(--text-2);
+}
+
+.login-form .server b { margin: 0 4px; font-weight: 600; color: var(--text); }
 
 .link-btn {
     border: 0;
@@ -1013,10 +1063,9 @@ table.data .strong { font-weight: 700; color: var(--ink); }
     .stat { border-left: 0; }
     .filters .field, .filters .field.search { width: calc(50% - 8px); }
     .filters .actions { margin-left: 0; width: 100%; }
-    .login { grid-template-columns: 1fr; }
-    .login-art { min-height: 0; padding: 28px; }
-    .login-art .art { display: none; }
-    .login-form { padding: 28px; }
+    .login { grid-template-columns: 1fr; grid-template-rows: 150px auto; }
+    .login-main { padding: 24px 16px 16px; }
+    .login-form { margin-block: 8px auto; }
     .form-row, .form-row.three { grid-template-columns: 1fr; }
     .kv { grid-template-columns: 1fr; gap: 2px 0; }
     .kv dd { margin-bottom: 10px; }

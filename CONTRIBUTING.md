@@ -28,7 +28,7 @@ cd ~/vortex-api && docker compose up -d && dotnet run --project src/VortexApi --
 git clone https://github.com/ArcGabito/vortex-wms && cd vortex-wms
 scripts/pack-sdk.sh                                                # SDK del hub -> packages/vortex-sdk
 dotnet test tests/VortexWms.Core.Tests                             # pruebas (no necesitan el hub)
-dotnet build src/VortexWms -t:Run -f net10.0-windows10.0.19041.0   # app en Windows
+dotnet run --project src/VortexWms -f net10.0-windows10.0.19041.0   # compila y abre la app en Windows
 ```
 
 En Windows con el hub dentro de WSL, el SDK se empaqueta con `./scripts/pack-sdk.ps1` (`-Distro Ubuntu` si tu

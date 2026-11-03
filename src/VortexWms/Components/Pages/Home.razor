@@ -7,7 +7,7 @@
 {
     <div class="stat-strip">
         <StatTile Icon="tag" Label="Artículos" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, "categoría", "categorías"))" />
-        <StatTile Icon="boxes" Label="Unidades" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="vs. hace 30 días" />
+        <StatTile Icon="boxes" Label="Unidades" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="@(s.UnitsChangePct is null ? null : "vs. hace 30 días")" />
         <StatTile Icon="clipboard" Label="Por despachar" Value="@Fmt.Compact(s.OrdersOpen)" Hint="@($"{s.OrdersPicking} en preparación")" />
         <StatTile Icon="truck" Label="Despachados" Value="@Fmt.Compact(s.Dispatched30d)" Delta="s.DispatchedChangePct" Hint="últimos 30 días" />
         <StatTile Icon="alert" Label="Stock bajo" Value="@Fmt.Compact(s.LowStock)" Hint="@($"{s.OutOfStock} agotados")" />

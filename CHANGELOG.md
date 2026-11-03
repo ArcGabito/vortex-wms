@@ -10,10 +10,18 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ### Added
 - `CONTRIBUTING.md`: entorno de desarrollo, flujo de PR con `main` protegida, convenciones y reglas del inventario.
 - `SECURITY.md`: cómo reportar vulnerabilidades en privado y qué cubre.
+- `docs/ROADMAP.md`: plan por fases para competir en el mercado (lo fiscal y tributario al final), con las
+  propuestas al hub y las decisiones pendientes.
 
 ### Changed
 - Documentación reorganizada en `docs/`: el README queda como presentación y el detalle pasa a
   `docs/DESCRIPTION.md`; `SISTEMAS.md` y `THIRD-PARTY-NOTICES.md` se movieron a `docs/`.
+- Barra de título de Windows en la tinta de la marca, con botones blancos y la caja del logo junto al nombre.
+- Nuevo inicio de sesión mitad y mitad: portada a la izquierda y, a la derecha, un formulario simple con el logo,
+  los controles del panel y la opción de mostrar la contraseña.
+- La versión se muestra con tres cifras (`0.1.0`) en Configuración.
+- Indicadores en dos líneas, del mismo alto que su ícono: la nota va junto a la cifra y solo se muestra si entra
+  completa (si no, se ve al pasar el mouse).
 
 ## [0.1.0] - 2026-11-01
 
