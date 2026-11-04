@@ -34,6 +34,10 @@
                 <NavLink class="nav-link" href="socios"><Icon Name="users" />Contactos</NavLink>
 
                 <div class="nav-section">Sistema</div>
+                @if (Session.Can(WmsPermissions.ViewAudit))
+                {
+                    <NavLink class="nav-link" href="auditoria"><Icon Name="list" />Auditoría</NavLink>
+                }
                 <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />Configuración</NavLink>
             </nav>
 

@@ -29,7 +29,7 @@
             </div>
         </div>
         <div class="actions">
-            <button class="btn btn-dark" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nuevo pedido</button>
+            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.CreateOrder))" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nuevo pedido</button>
         </div>
     </div>
 
@@ -100,17 +100,17 @@
                                     <KebabMenu>
                                         @if (o.Status == OrderStatuses.Pending)
                                         {
-                                            <button @onclick="() => StartPickingAsync(o)"><Icon Name="play" Size="18" />Empezar preparación</button>
+                                            <button disabled="@(!Session.Can(WmsPermissions.Pick))" @onclick="() => StartPickingAsync(o)"><Icon Name="play" Size="18" />Empezar preparación</button>
                                         }
                                         @if (open)
                                         {
-                                            <button @onclick="() => OpenDispatch(o)"><Icon Name="truck" Size="18" />Despachar</button>
+                                            <button disabled="@(!Session.Can(WmsPermissions.Dispatch))" @onclick="() => OpenDispatch(o)"><Icon Name="truck" Size="18" />Despachar</button>
                                         }
                                         <button @onclick="() => OpenDetail(o)"><Icon Name="eye" Size="18" />@(open ? "Lista de picking" : "Ver detalle")</button>
                                         @if (open)
                                         {
                                             <hr />
-                                            <button class="danger" @onclick="() => _cancel = o"><Icon Name="ban" Size="18" />Cancelar pedido</button>
+                                            <button class="danger" disabled="@(!Session.Can(WmsPermissions.CancelOrder))" @onclick="() => _cancel = o"><Icon Name="ban" Size="18" />Cancelar pedido</button>
                                         }
                                     </KebabMenu>
                                 </td>

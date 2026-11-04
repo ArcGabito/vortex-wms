@@ -14,6 +14,12 @@ equipos que trabajan sin conexión.
   caso se cierra la sesión y el login muestra el motivo.
 - Cada organización tiene su propia base SQLite (`vortex-wms-{organizationId}.db` en `AppDataDirectory`).
 
+## Permisos (base común de la suite)
+
+Roles del WMS (`session.Access.Role`, los asigna el OrgAdmin): `operario` (sin rol asignado), `supervisor`, `consulta`
+y `administrador` (también artículos y almacenes). OrgAdmin y PlatformAdmin del hub son administradores. Cada acción
+valida su permiso en Core y los ajustes, anulaciones y cancelaciones quedan en la auditoría local.
+
 ## Datos maestros (dueño: el hub)
 
 | Dato | En el WMS | Altas/cambios desde el WMS |

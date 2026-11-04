@@ -60,6 +60,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
     public Task<string> CreateAsync(Guid customerId, Guid siteId, IReadOnlyList<DocumentLine> lines, string currencyCode,
         CancellationToken ct = default)
     {
+        RequirePermission(WmsPermissions.CreateOrder);
         Require(customerId != Guid.Empty, "Elige el cliente.");
         Require(lines.Count > 0, "Agrega al menos un artículo.");
         Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
@@ -113,20 +114,25 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             ("$tracking", d.TrackingNumber), ("$site", d.SiteId == Guid.Empty ? order.SiteId : d.SiteId));
     }
 
-    public Task StartPickingAsync(Guid orderId, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, _) =>
+    public Task StartPickingAsync(Guid orderId, CancellationToken ct = default)
+    {
+        RequirePermission(WmsPermissions.Pick);
+        return InTransactionAsync(async (c, tx, _) =>
         {
             var status = await StatusAsync(c, tx, orderId);
             Require(status == OrderStatuses.Pending, "Solo se puede preparar un pedido pendiente.");
             return await c.ExecAsync("UPDATE orders SET status = 'picking' WHERE id = $id", tx, ("$id", orderId));
         }, ct);
+    }
 
     /// <summary>
     /// Despacha el pedido desde <paramref name="siteId"/> (por defecto, la sede del pedido): libera la reserva,
     /// descuenta el stock y publica <c>shipment.dispatched</c>.
     /// </summary>
-    public Task<string> DispatchAsync(Guid orderId, string? carrier, string? trackingNumber, Guid? siteId = null, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, now) =>
+    public Task<string> DispatchAsync(Guid orderId, string? carrier, string? trackingNumber, Guid? siteId = null, CancellationToken ct = default)
+    {
+        RequirePermission(WmsPermissions.Dispatch);
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var order = await c.FirstOrDefaultAsync("SELECT * FROM orders WHERE id = $id", r => new
             {
@@ -168,12 +174,17 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
                 subjectType: "shipment", subjectId: shipmentNumber, id: shipmentId);
             return shipmentNumber;
         }, ct);
+    }
 
-    public Task CancelAsync(Guid orderId, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, now) =>
+    public Task CancelAsync(Guid orderId, CancellationToken ct = default)
+    {
+        RequirePermission(WmsPermissions.CancelOrder);
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await StatusAsync(c, tx, orderId);
             Require(status is OrderStatuses.Pending or OrderStatuses.Picking, "Solo se cancela un pedido sin despachar.");
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "order", orderId,
+                await c.ScalarAsync<string?>("SELECT number FROM orders WHERE id = $id", tx, ("$id", orderId)), null);
             var siteId = await c.ScalarAsync<string>("SELECT site_id FROM orders WHERE id = $id", tx, ("$id", orderId));
             if (Guid.Parse(siteId) is var site && site != Guid.Empty)
             {
@@ -182,6 +193,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             }
             return await c.ExecAsync("UPDATE orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", orderId));
         }, ct);
+    }
 
     private static async Task InsertAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid orderId, string number,
         string source, Guid customerId, Guid siteId, IReadOnlyList<OrderLine> lines, string currencyCode)

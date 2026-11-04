@@ -30,7 +30,7 @@
             </select>
         </div>
         <div class="actions">
-            <button class="btn btn-dark" @onclick="() => Open(null)"><Icon Name="plus" Size="18" />Nuevo artículo</button>
+            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.EditCatalog))" @onclick="() => Open(null)"><Icon Name="plus" Size="18" />Nuevo artículo</button>
         </div>
     </div>
 
@@ -105,7 +105,7 @@
                                 </td>
                                 <td class="actions-col">
                                     <KebabMenu>
-                                        <button @onclick="() => Open(item)"><Icon Name="edit" Size="18" />Editar</button>
+                                        <button disabled="@(!Session.Can(WmsPermissions.EditCatalog))" @onclick="() => Open(item)"><Icon Name="edit" Size="18" />Editar</button>
                                         @if (item.TrackInventory)
                                         {
                                             <a href="@($"inventario?q={Uri.EscapeDataString(item.Sku)}")"><Icon Name="boxes" Size="18" />Ver stock por sede</a>

@@ -127,5 +127,10 @@ internal static class Schema
         CREATE TABLE sync_failed (
             id TEXT PRIMARY KEY, entry TEXT NOT NULL, error_code TEXT NOT NULL, error TEXT NOT NULL, failed_at TEXT NOT NULL);
         """,
+        // 2: base común de la suite. Impuesto y zona horaria de la empresa (del hub) y bitácora de auditoría.
+        """
+        ALTER TABLE company ADD COLUMN default_tax_rate REAL;
+        ALTER TABLE company ADD COLUMN time_zone TEXT;
+        """ + VortexApi.Suite.Auditing.AuditSchema.Sql,
     ];
 }

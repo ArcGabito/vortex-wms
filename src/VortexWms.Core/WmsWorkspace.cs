@@ -18,6 +18,7 @@ public sealed class WmsWorkspace
         Inventory = new InventoryService(db, context, clock);
         Orders = new OrderService(db, context, clock);
         Receipts = new ReceiptService(db, context, clock);
+        Audit = new AuditService(db, context, clock);
         SyncStore = new SqliteSyncStore(db);
         SyncHandlers = new WmsSyncHandlers(db, Master, Orders, Receipts, clock);
     }
@@ -27,6 +28,7 @@ public sealed class WmsWorkspace
     public InventoryService Inventory { get; }
     public OrderService Orders { get; }
     public ReceiptService Receipts { get; }
+    public AuditService Audit { get; }
     public SqliteSyncStore SyncStore { get; }
     public WmsSyncHandlers SyncHandlers { get; }
 

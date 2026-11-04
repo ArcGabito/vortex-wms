@@ -58,8 +58,8 @@
             {
                 <button class="btn btn-outline" @onclick="TransferSelected"><Icon Name="arrows" Size="18" />Transferir (@_selected.Count)</button>
             }
-            <button class="btn btn-dark" @onclick="() => OpenAdjust(null)"><Icon Name="plus" Size="18" />Ajustar stock</button>
-            <button class="btn btn-dark icon-btn" title="Transferir entre sedes" aria-label="Transferir entre sedes" @onclick="() => OpenTransfer(null)"><Icon Name="arrows" Size="18" /></button>
+            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.Adjust))" @onclick="() => OpenAdjust(null)"><Icon Name="plus" Size="18" />Ajustar stock</button>
+            <button class="btn btn-dark icon-btn" disabled="@(!Session.Can(WmsPermissions.Transfer))" title="Transferir entre sedes" aria-label="Transferir entre sedes" @onclick="() => OpenTransfer(null)"><Icon Name="arrows" Size="18" /></button>
             <button class="btn btn-dark icon-btn" title="Exportar CSV" aria-label="Exportar CSV" @onclick="ExportAsync"><Icon Name="download" Size="18" /></button>
         </div>
     </div>
@@ -130,9 +130,9 @@
                                 <td><StatusPill Text="@text" Tone="@tone" /></td>
                                 <td class="actions-col">
                                     <KebabMenu>
-                                        <button @onclick="() => OpenAdjust(row)"><Icon Name="edit" Size="18" />Ajustar stock</button>
-                                        <button @onclick="() => OpenTransfer([row])"><Icon Name="arrows" Size="18" />Transferir</button>
-                                        <button @onclick="() => OpenSettings(row)"><Icon Name="pin" Size="18" />Ubicación y mínimo</button>
+                                        <button disabled="@(!Session.Can(WmsPermissions.Adjust))" @onclick="() => OpenAdjust(row)"><Icon Name="edit" Size="18" />Ajustar stock</button>
+                                        <button disabled="@(!Session.Can(WmsPermissions.Transfer))" @onclick="() => OpenTransfer([row])"><Icon Name="arrows" Size="18" />Transferir</button>
+                                        <button disabled="@(!Session.Can(WmsPermissions.StockSettings))" @onclick="() => OpenSettings(row)"><Icon Name="pin" Size="18" />Ubicación y mínimo</button>
                                         <hr />
                                         <a href="@($"movimientos?q={Uri.EscapeDataString(row.Sku)}")"><Icon Name="list" Size="18" />Ver kardex</a>
                                     </KebabMenu>
