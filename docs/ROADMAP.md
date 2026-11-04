@@ -1,11 +1,17 @@
 # Hoja de ruta
 
 Plan para que Vortex WMS pase de gestor de stock multisede a un WMS que compita en el mercado (pymes y medianas
-empresas de Perú y la región). Va por fases en el orden en que conviene construirlas: cada una se apoya en la
+empresas de Perú, LATAM, EE. UU. y Europa). Va por fases en el orden en que conviene construirlas: cada una se apoya en la
 anterior. **Lo fiscal y tributario (GRE, PLE) queda para el final**, pero desde la fase 1 se guardan los datos que
 necesitará, para que entonces sea una exportación y no un rediseño.
 
 Los tamaños (S, M, L, XL) son relativos entre fases y se vuelven a estimar al empezar cada una.
+
+> **Alcance internacional (2026-11).** La suite apunta a **Perú, el resto de LATAM, EE. UU. y Europa** en español,
+> inglés y portugués ([ROADMAP-SUITE](https://github.com/ArcGabito/vortex-api/blob/main/docs/ROADMAP-SUITE.md)).
+> Antes de la fase 0 va la **base común de la suite**: impuestos y monedas de `VortexApi.Suite` (el costo y el valor
+> del stock se redondean según la moneda de la empresa), formatos regionales, idiomas y auditoría. Los roles de la
+> fase 0 usan la matriz de permisos común. La fase 8 deja de ser solo Perú: cada país es un paquete de localización.
 
 ## Dónde estamos (0.1.0)
 
@@ -183,7 +189,7 @@ parcial) pasa con dos equipos.
 - **Versión web:** hoy cada equipo tiene su propia base; una versión web necesita un servidor del WMS. Evaluar
   después de 1.0, empezando por un panel web de consulta alimentado por eventos.
 
-## Fase 8: fiscal y tributario (Perú) · L
+## Fase 8: fiscal y tributario (Perú primero) · L
 
 - **Guía de Remisión Electrónica** (remitente y, si la empresa traslada con flota propia, transportista). Los datos
   salen del despacho o la transferencia: motivo, peso bruto (fase 2), partida y llegada con ubigeo, transportista,
@@ -193,6 +199,9 @@ parcial) pasa con dos equipos.
   la fase 1 (Tabla 12) y la fase 2 (Tabla 6).
 - **Ubigeo** en las direcciones de sedes y terceros: propuesta al hub.
 - Se activa con un `feature` del hub (por ejemplo `facturacion`).
+- **Otros países**, con el mismo modelo de paquetes: carta porte (complemento del CFDI) en México, remisión
+  electrónica en Colombia, guía de despacho electrónica (DTE 52) en Chile; en EE. UU. y la UE, documentos de envío
+  y declaraciones de inventario según el país (Intrastat en la UE).
 
 ## Propuestas al hub
 
