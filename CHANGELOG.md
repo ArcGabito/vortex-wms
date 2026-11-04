@@ -8,6 +8,14 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Base común de la suite** (`VortexApi.Suite`): formatos de moneda, fecha y hora según el país y la zona horaria de
+  la empresa; las categorías de impuesto de los artículos son las comunes de la suite.
+- **Roles del WMS** asignados en el hub (fase 0 de la hoja de ruta): `operario` (por defecto: recibe, prepara, despacha y
+  transfiere), `supervisor` (además ajusta stock, cambia ubicaciones y mínimos, crea y cancela pedidos, anula
+  recepciones y ve la auditoría), `consulta` y `administrador`. Se validan en Core.
+- **Auditoría** de ajustes de stock, recepciones anuladas y pedidos cancelados (pantalla Auditoría).
+
+### Added
 - `CONTRIBUTING.md`: entorno de desarrollo, flujo de PR con `main` protegida, convenciones y reglas del inventario.
 - `SECURITY.md`: cómo reportar vulnerabilidades en privado y qué cubre.
 - `docs/ROADMAP.md`: plan por fases para competir en el mercado (lo fiscal y tributario al final), con las

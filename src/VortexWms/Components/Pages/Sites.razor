@@ -9,7 +9,7 @@
             <h2>Almacenes y tiendas</h2>
             <p>Las sedes son comunes a toda la suite: el POS vende desde las tiendas y el WMS controla el stock de cada una.</p>
         </div>
-        <button class="btn btn-dark" @onclick="Open"><Icon Name="plus" Size="18" />Nueva sede</button>
+        <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.EditCatalog))" @onclick="Open"><Icon Name="plus" Size="18" />Nueva sede</button>
     </div>
 
     @if (_sites.Count == 0 && !Loading)

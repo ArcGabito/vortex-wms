@@ -7,7 +7,7 @@ using VortexWms.Core.Domain;
 namespace VortexWms.Core.Tests;
 
 /// <summary>Workspace sobre una base SQLite temporal, con un almacén y artículos ya sincronizados desde el "hub".</summary>
-public sealed class TestWorkspace(string deviceTag = "TEST") : IAsyncLifetime
+public sealed class TestWorkspace(string deviceTag = "TEST", string role = "administrador") : IAsyncLifetime
 {
     private readonly string _path = Path.Combine(Path.GetTempPath(), $"vortex-wms-test-{Guid.NewGuid():N}.db");
 
@@ -19,10 +19,11 @@ public sealed class TestWorkspace(string deviceTag = "TEST") : IAsyncLifetime
     public Guid Coffee { get; } = Guid.Parse("22222222-0000-0000-0000-000000000001");
     public Guid Sugar { get; } = Guid.Parse("22222222-0000-0000-0000-000000000002");
     public Guid Delivery { get; } = Guid.Parse("22222222-0000-0000-0000-000000000003");
+    public TestContext Context { get; } = new(deviceTag, role);
 
     public async Task InitializeAsync()
     {
-        Wms = await WmsWorkspace.OpenAsync(_path, new Context(deviceTag), Clock);
+        Wms = await WmsWorkspace.OpenAsync(_path, Context, Clock);
         await Wms.Master.ApplySiteAsync(Site(Central, "ALM-01", "Almacén central", "Warehouse"));
         await Wms.Master.ApplySiteAsync(Site(Store, "TDA-01", "Tienda Miraflores", "Store"));
         await Wms.Master.ApplyItemAsync(Item(Coffee, "CAFE-250", "Café tostado 250 g"));
@@ -58,11 +59,14 @@ public sealed class TestWorkspace(string deviceTag = "TEST") : IAsyncLifetime
         new(id ?? Guid.NewGuid(), 1, type, source, schemaVersion, null, null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, null,
             JsonSerializer.SerializeToElement(data, VortexJson.Options));
 
-    private sealed class Context(string deviceTag) : IWmsContext
+    /// <summary>Usuario de prueba; el rol se puede cambiar a mitad de una prueba.</summary>
+    public sealed class TestContext(string deviceTag, string role) : IWmsContext
     {
         public Guid? UserId => Guid.Parse("00000000-0000-0000-0000-000000000001");
         public string UserName => "Luis";
         public string DeviceTag => deviceTag;
         public Guid? DefaultSiteId => null;
+        public string Role { get; set; } = role;
+        public bool Can(string permission) => WmsPermissions.Matrix.Can(Role, "User", permission);
     }
 }

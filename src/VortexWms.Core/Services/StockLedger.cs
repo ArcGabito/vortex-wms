@@ -145,6 +145,23 @@ public abstract class WmsService(WmsDatabase db, IWmsContext context, TimeProvid
 
     protected static string Like(string? term) => $"%{term?.Trim().Replace("%", "").Replace("_", "")}%";
 
+    /// <summary>Corta la operación si el rol del usuario no la permite (el mensaje se muestra tal cual).</summary>
+    protected void RequirePermission(string permission)
+    {
+        if (!Context.Can(permission))
+            throw new WmsValidationException($"Tu rol ({Context.Role}) no permite {WmsPermissions.Describe(permission)}. Pide a un supervisor que lo haga.");
+    }
+
+    /// <summary>Deja la acción en la bitácora, en la misma transacción que la acción.</summary>
+    protected Task AuditAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string action, string entity, Guid? entityId,
+        string? reference, string? detail) =>
+        c.ExecAsync("""
+            INSERT INTO audit_log (id, at, user_id, user_name, device, action, entity, entity_id, reference, detail)
+            VALUES ($id, $at, $user, $name, $device, $action, $entity, $entityId, $ref, $detail)
+            """, tx, ("$id", Guid.NewGuid()), ("$at", now), ("$user", Context.UserId), ("$name", Context.UserName),
+            ("$device", Context.DeviceTag), ("$action", action), ("$entity", entity), ("$entityId", entityId?.ToString()),
+            ("$ref", reference), ("$detail", detail));
+
     protected static void Require(bool condition, string message)
     {
         if (!condition)

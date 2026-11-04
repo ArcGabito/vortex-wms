@@ -33,7 +33,8 @@ public sealed class HubIntegrationTests : IAsyncLifetime
                 ProductKey = Environment.GetEnvironmentVariable("VORTEX_WMS_KEY") ?? "vxp_wms_dev_key_change_me",
             });
         var sessions = new VortexSessionManager(client, new InMemorySessionStore(), "vortex-wms-integration-tests");
-        await sessions.LoginAsync("luis@vortex.local", "Suite-Local-2026!", "Pruebas Vortex WMS", "tests");
+        // Ana es OrgAdmin de la organización demo: puede crear artículos y almacenes.
+        await sessions.LoginAsync("ana@vortex.local", "Suite-Local-2026!", "Pruebas Vortex WMS", "tests");
         var sync = _t.Wms.SyncHandlers.Register(new VortexSync(client, sessions, _t.Wms.SyncStore));
 
         var first = await sync.SyncAsync();

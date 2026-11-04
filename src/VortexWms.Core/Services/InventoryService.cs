@@ -87,6 +87,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     public Task<decimal> AdjustAsync(Guid siteId, Guid itemId, decimal? countedQuantity, decimal? delta, string reason, string? note,
         CancellationToken ct = default)
     {
+        RequirePermission(WmsPermissions.Adjust);
         Require(countedQuantity is not null ^ delta is not null, "Indica la cantidad contada o la diferencia.");
         Require(AdjustmentReasons.All.Contains(reason), "Motivo de ajuste no válido.");
         Require(countedQuantity is null or >= 0, "El conteo no puede ser negativo.");
@@ -98,6 +99,9 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
             var change = countedQuantity is { } counted ? counted - current : delta!.Value;
             Require(change != 0, "El ajuste no cambia el stock.");
             Require(current + change >= 0, $"El stock no puede quedar negativo (actual: {current:0.##}).");
+            var item = await InventoryService.ItemLabelAsync(c, tx, itemId);
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.StockAdjusted, "item", itemId, item,
+                $"{(change > 0 ? "+" : "")}{change:0.##} ({reason}){(Clean(note) is { } n ? $": {n}" : "")}");
             return await StockLedger.ApplyAsync(c, tx, now, Context.UserName,
                 new StockLedger.Entry(siteId, itemId, change, MovementKinds.Adjustment, reason, Note: Clean(note)));
         }, ct);
@@ -106,6 +110,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     public Task<string> TransferAsync(Guid fromSiteId, Guid toSiteId, IReadOnlyList<DocumentLine> lines, string? note,
         CancellationToken ct = default)
     {
+        RequirePermission(WmsPermissions.Transfer);
         Require(fromSiteId != toSiteId, "El origen y el destino deben ser distintos.");
         Require(lines.Count > 0, "Agrega al menos un artículo.");
         Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
@@ -142,6 +147,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     /// <summary>Ubicación en el almacén (pasillo/estante) y stock mínimo: datos propios del WMS, no viajan al hub.</summary>
     public Task UpdateStockSettingsAsync(Guid siteId, Guid itemId, string? bin, decimal? reorderPoint, CancellationToken ct = default)
     {
+        RequirePermission(WmsPermissions.StockSettings);
         Require(reorderPoint is null or >= 0, "El mínimo no puede ser negativo.");
         return InTransactionAsync(async (c, tx, now) =>
         {

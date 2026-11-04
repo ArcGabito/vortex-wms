@@ -54,6 +54,7 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
     /// <summary>Recepción directa: la mercadería llegó sin orden de compra previa.</summary>
     public Task<string> ReceiveDirectAsync(Guid siteId, Guid? supplierId, IReadOnlyList<DocumentLine> lines, CancellationToken ct = default)
     {
+        RequirePermission(WmsPermissions.Receive);
         Require(lines.Count > 0, "Agrega al menos un artículo.");
         Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
         var merged = InventoryService.Merge(lines);
@@ -87,6 +88,7 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
     /// <summary>Recibe una recepción esperada. <paramref name="received"/>: cantidad recibida por número de línea.</summary>
     public Task<string> ReceiveExpectedAsync(Guid receiptId, IReadOnlyDictionary<int, decimal> received, CancellationToken ct = default)
     {
+        RequirePermission(WmsPermissions.Receive);
         Require(received.Values.All(q => q >= 0), "Las cantidades no pueden ser negativas.");
         Require(received.Values.Any(q => q > 0), "Indica al menos una cantidad recibida.");
 
@@ -119,13 +121,18 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
         }, ct);
     }
 
-    public Task CancelAsync(Guid receiptId, CancellationToken ct = default) =>
-        InTransactionAsync(async (c, tx, _) =>
+    public Task CancelAsync(Guid receiptId, CancellationToken ct = default)
+    {
+        RequirePermission(WmsPermissions.CancelReceipt);
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await c.ScalarAsync<string?>("SELECT status FROM receipts WHERE id = $id", tx, ("$id", receiptId));
             Require(status == ReceiptStatuses.Expected, "Solo se anula una recepción pendiente.");
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Voided, "receipt", receiptId,
+                await c.ScalarAsync<string?>("SELECT number FROM receipts WHERE id = $id", tx, ("$id", receiptId)), null);
             return await c.ExecAsync("UPDATE receipts SET status = 'cancelled' WHERE id = $id", tx, ("$id", receiptId));
         }, ct);
+    }
 
     /// <summary>Aplica <c>purchase_order.created</c>: crea la recepción esperada. Idempotente por orden de compra.</summary>
     internal async Task ApplyPurchaseOrderAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, PurchaseOrderCreated e)

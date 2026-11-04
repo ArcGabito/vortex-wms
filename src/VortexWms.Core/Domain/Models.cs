@@ -11,6 +11,12 @@ public interface IWmsContext
 
     /// <summary>Almacén elegido por el usuario para operar por defecto (puede ser null).</summary>
     Guid? DefaultSiteId { get; }
+
+    /// <summary>Rol efectivo del usuario en el WMS (<see cref="WmsPermissions"/>).</summary>
+    string Role { get; }
+
+    /// <summary>Si el usuario puede hacer la acción (<see cref="WmsPermissions"/>).</summary>
+    bool Can(string permission);
 }
 
 /// <summary>Dato inválido o regla de negocio incumplida: se muestra tal cual al usuario.</summary>
@@ -38,7 +44,13 @@ public sealed record PartyRow(
     Guid Id, string Name, string? TradeName, string Kind, string? DocumentType, string? DocumentNumber, bool IsCustomer,
     bool IsSupplier, string? Email, string? Phone, string? City, bool IsActive, int Version, bool Pending);
 
-public sealed record CompanyInfo(string LegalName, string? TradeName, string? TaxId, string CountryCode, string CurrencyCode);
+/// <summary>Empresa del hub. <c>TimeZone</c> IANA (las fechas se muestran en la hora de la empresa).</summary>
+public sealed record CompanyInfo(
+    string LegalName, string? TradeName, string? TaxId, string CountryCode, string CurrencyCode, decimal? DefaultTaxRate = null,
+    string? TimeZone = null);
+
+public sealed record AuditRow(
+    Guid Id, DateTimeOffset At, string? UserName, string? Device, string Action, string Entity, string? Reference, string? Detail);
 
 public sealed record Option(Guid Id, string Label, string? Detail = null);
 

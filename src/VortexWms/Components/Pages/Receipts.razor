@@ -29,7 +29,7 @@
             </div>
         </div>
         <div class="actions">
-            <button class="btn btn-dark" @onclick="OpenDirect"><Icon Name="plus" Size="18" />Nueva recepción</button>
+            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.Receive))" @onclick="OpenDirect"><Icon Name="plus" Size="18" />Nueva recepción</button>
         </div>
     </div>
 
@@ -85,13 +85,13 @@
                                     <KebabMenu>
                                         @if (r.Status == ReceiptStatuses.Expected)
                                         {
-                                            <button @onclick="() => OpenReceive(r)"><Icon Name="package-check" Size="18" />Recibir</button>
+                                            <button disabled="@(!Session.Can(WmsPermissions.Receive))" @onclick="() => OpenReceive(r)"><Icon Name="package-check" Size="18" />Recibir</button>
                                         }
                                         <button @onclick="() => OpenDetail(r)"><Icon Name="eye" Size="18" />Ver detalle</button>
                                         @if (r.Status == ReceiptStatuses.Expected)
                                         {
                                             <hr />
-                                            <button class="danger" @onclick="() => _cancel = r"><Icon Name="ban" Size="18" />Anular</button>
+                                            <button class="danger" disabled="@(!Session.Can(WmsPermissions.CancelReceipt))" @onclick="() => _cancel = r"><Icon Name="ban" Size="18" />Anular</button>
                                         }
                                     </KebabMenu>
                                 </td>

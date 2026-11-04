@@ -29,6 +29,8 @@ scripts/pack-sdk.sh   |   ./scripts/pack-sdk.ps1                         # SDK d
 - Movimientos derivados de documentos de otro sistema usan `DeterministicId` para que varios equipos coincidan.
 - Los handlers de eventos son idempotentes (`processed_events`) y nunca lanzan por datos inválidos: los registran
   como ignorados.
+- Permisos y auditoría de la base común (`VortexApi.Suite`): cada acción valida `RequirePermission`
+  (`WmsPermissions`); ajustes y cancelaciones dejan su `AuditAsync` en la misma transacción.
 - Errores para el usuario: `WmsValidationException` con el mensaje final en español.
 - En Razor, dentro de atributos usa `@(...)` cuando haya comillas (`"..."`) y no nombres variables `code` ni `page`.
 - UI: reutiliza las clases de `app.css` (`filters`, `table.data`, `two-line`, `pill`, `modal`…) y los componentes
