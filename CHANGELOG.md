@@ -8,6 +8,12 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Fase 0: varios equipos sin conexión.** Si dos equipos reciben la misma orden de compra o despachan el mismo pedido
+  sin conexión, el stock se mueve una sola vez (Ids deterministas); si registraron datos distintos, queda la versión
+  que llegó primero al hub y el caso se ve en Configuración → Conflictos entre equipos. Empezar la preparación,
+  cancelar pedidos (también desde el ERP o el CRM) y anular recepciones llega a los demás equipos
+  (`order.picking_started`, `order.cancelled`, `receipt.cancelled`), y la ubicación y el mínimo por artículo se
+  comparten (`wms.record.upserted`, gana el cambio más reciente). Los eventos aplicados se olvidan a los 180 días.
 - **Idiomas**: la interfaz en español, inglés y portugués. Se elige en Configuración → Este equipo; por defecto sale
   del país de la empresa (portugués en Brasil y Portugal, inglés en EE. UU. y el Reino Unido, español en el resto).
   Una prueba verifica que cada texto exista en los tres idiomas con los mismos datos variables.

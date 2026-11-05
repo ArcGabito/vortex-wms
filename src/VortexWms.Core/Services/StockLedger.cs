@@ -46,13 +46,35 @@ internal static class StockLedger
 
     /// <summary>
     /// Aplica un cambio hecho en otro equipo del WMS (llegó como <c>stock.adjusted</c>): suma el delta y deja el
-    /// movimiento con el mismo Id, sin volver a publicarlo. Si el movimiento ya existe (propio o repetido), no hace nada.
+    /// movimiento con el mismo Id, sin volver a publicarlo. Si el movimiento ya existe igual (propio o repetido), no hace
+    /// nada. Si existe con otra sede o cantidad, los dos equipos registraron el mismo documento sin conexión y el hub se
+    /// quedó con la versión del otro: se deshace la local, se aplica la del hub y queda el conflicto a la vista.
     /// </summary>
     public static async Task ReplicateAsync(SqliteConnection c, SqliteTransaction tx, Guid movementId, DateTimeOffset occurredAt,
-        StockAdjusted s)
+        StockAdjusted s, DateTimeOffset now)
     {
-        if (await MovementExistsAsync(c, tx, movementId))
+        var local = await c.FirstOrDefaultAsync("SELECT site_id, item_id, quantity, document_id, reference FROM movements WHERE id = $id",
+            r => new { Site = r.Guid("site_id"), Item = r.Guid("item_id"), Qty = r.Dec("quantity"), Doc = r.GuidOrNull("document_id"),
+                Ref = r.StrOrNull("reference") }, tx, ("$id", movementId));
+        if (local is not null)
+        {
+            if (local.Site == s.SiteId && local.Item == s.ItemId && local.Qty == s.QuantityDelta)
+                return;
+            await c.ExecAsync("UPDATE stock SET on_hand = on_hand - $qty, updated_at = $now WHERE site_id = $site AND item_id = $item", tx,
+                ("$qty", local.Qty), ("$now", now), ("$site", local.Site), ("$item", local.Item));
+            await c.ExecAsync("""
+                INSERT INTO stock (site_id, item_id, on_hand, reserved, updated_at) VALUES ($site, $item, $qty, 0, $now)
+                ON CONFLICT (site_id, item_id) DO UPDATE SET on_hand = on_hand + $qty, updated_at = $now
+                """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$qty", s.QuantityDelta), ("$now", now));
+            await c.ExecAsync("""
+                UPDATE movements SET site_id = $site, item_id = $item, quantity = $qty, on_hand_after = $after, note = $note
+                WHERE id = $id
+                """, tx, ("$id", movementId), ("$site", s.SiteId), ("$item", s.ItemId), ("$qty", s.QuantityDelta),
+                ("$after", await OnHandAsync(c, tx, s.SiteId, s.ItemId)), ("$note", "conflict"));
+            await SyncConflicts.RecordAsync(c, tx, now, SyncConflictKinds.Movement, movementId, local.Ref ?? s.Reference,
+                $"{local.Qty:0.##}→{s.QuantityDelta:0.##}");
             return;
+        }
 
         await c.ExecAsync("""
             INSERT INTO stock (site_id, item_id, on_hand, reserved, updated_at) VALUES ($site, $item, $qty, 0, $at)

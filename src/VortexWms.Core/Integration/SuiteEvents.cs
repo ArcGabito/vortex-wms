@@ -11,6 +11,14 @@ public static class SuiteEvents
     public const string StockAdjusted = "stock.adjusted";
     public const string StockTransferred = "stock.transferred";
     public const string ShipmentDispatched = "shipment.dispatched";
+    public const string ReceiptCancelled = "receipt.cancelled";
+    public const string OrderPickingStarted = "order.picking_started";
+
+    /// <summary>Replicación interna: datos propios del WMS (ubicación y mínimo por artículo y sede) entre sus equipos.</summary>
+    public const string RecordUpserted = "wms.record.upserted";
+
+    // Publican el WMS, el ERP y el CRM
+    public const string OrderCancelled = "order.cancelled";
 
     // Consume el WMS (order.created también lo publica el WMS cuando funciona sin ERP ni CRM)
     public const string SaleCompleted = "sale.completed";
@@ -68,3 +76,30 @@ public sealed record PurchaseOrderLine(Guid ItemId, decimal Quantity, decimal Un
 /// <summary><c>purchase_order.created</c>. <c>number</c> no está en v1: se usa si el ERP lo envía.</summary>
 public sealed record PurchaseOrderCreated(
     Guid PurchaseOrderId, string? Number, Guid SupplierId, Guid SiteId, IReadOnlyList<PurchaseOrderLine>? Lines);
+
+// ---------- Estados de documentos (fase 0) ----------
+
+/// <summary><c>order.picking_started</c>: empezó la preparación del pedido.</summary>
+public sealed record OrderPickingStarted(Guid OrderId, string? Number);
+
+/// <summary><c>order.cancelled</c>: pedido cancelado antes de despacharse (libera la reserva).</summary>
+public sealed record OrderCancelled(Guid OrderId, string? Number, string? Reason);
+
+/// <summary><c>receipt.cancelled</c>: recepción esperada anulada.</summary>
+public sealed record ReceiptCancelled(Guid ReceiptId, string? Number, Guid? PurchaseOrderId);
+
+// ---------- Replicación interna del WMS ----------
+
+public static class WmsRecordKinds
+{
+    /// <summary>Ubicación y stock mínimo de un artículo en una sede. Id: <c>{siteId}:{itemId}</c>.</summary>
+    public const string StockSettings = "stock_settings";
+}
+
+/// <summary>
+/// <c>wms.record.upserted</c>: la versión completa de un registro propio del WMS. Los demás equipos la aplican si es más
+/// nueva que la suya (<c>updatedAt</c>), así el último cambio gana y repetir el evento no cambia nada.
+/// </summary>
+public sealed record WmsRecord(string Kind, string Id, DateTimeOffset UpdatedAt, System.Text.Json.JsonElement Data);
+
+public sealed record StockSettingsData(Guid SiteId, Guid ItemId, string? Bin, decimal? ReorderPoint);

@@ -146,22 +146,42 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         }, ct);
     }
 
-    /// <summary>Ubicación en el almacén (pasillo/estante) y stock mínimo: datos propios del WMS, no viajan al hub.</summary>
+    /// <summary>
+    /// Ubicación en el almacén (pasillo/estante) y stock mínimo: datos propios del WMS. Se comparten con los demás
+    /// equipos por <c>wms.record.upserted</c>; si dos los cambian, gana el cambio más reciente.
+    /// </summary>
     public Task UpdateStockSettingsAsync(Guid siteId, Guid itemId, string? bin, decimal? reorderPoint, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.StockSettings);
         Require(reorderPoint is null or >= 0, T("error.el_minimo_no_puede_ser"));
         return InTransactionAsync(async (c, tx, now) =>
         {
-            await c.ExecAsync("""
-                INSERT INTO stock (site_id, item_id, on_hand, reserved, bin, reorder_point, updated_at)
-                VALUES ($site, $item, 0, 0, $bin, $min, $now)
-                ON CONFLICT (site_id, item_id) DO UPDATE SET bin = $bin, reorder_point = $min, updated_at = $now
-                """, tx, ("$site", siteId), ("$item", itemId), ("$bin", Clean(bin)?.ToUpperInvariant()), ("$min", reorderPoint),
-                ("$now", now));
+            var settings = new StockSettingsData(siteId, itemId, Clean(bin)?.ToUpperInvariant(), reorderPoint);
+            await WriteSettingsAsync(c, tx, settings, now);
+            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.RecordUpserted,
+                new WmsRecord(WmsRecordKinds.StockSettings, $"{siteId}:{itemId}", now,
+                    System.Text.Json.JsonSerializer.SerializeToElement(settings, VortexApi.Client.VortexJson.Options)),
+                subjectType: WmsRecordKinds.StockSettings, subjectId: itemId.ToString());
             return 0;
         }, ct);
     }
+
+    /// <summary>Ajustes de otro equipo: se aplican solo si son más nuevos que los guardados.</summary>
+    internal static async Task ApplySettingsAsync(SqliteConnection c, SqliteTransaction tx, StockSettingsData s, DateTimeOffset updatedAt)
+    {
+        var current = await c.ScalarAsync<string?>("SELECT settings_updated_at FROM stock WHERE site_id = $site AND item_id = $item", tx,
+            ("$site", s.SiteId), ("$item", s.ItemId));
+        if (current is not null && string.CompareOrdinal(current, SqliteExtensions.Time(updatedAt)) >= 0)
+            return;
+        await WriteSettingsAsync(c, tx, s, updatedAt);
+    }
+
+    private static Task WriteSettingsAsync(SqliteConnection c, SqliteTransaction tx, StockSettingsData s, DateTimeOffset at) =>
+        c.ExecAsync("""
+            INSERT INTO stock (site_id, item_id, on_hand, reserved, bin, reorder_point, updated_at, settings_updated_at)
+            VALUES ($site, $item, 0, 0, $bin, $min, $at, $at)
+            ON CONFLICT (site_id, item_id) DO UPDATE SET bin = $bin, reorder_point = $min, settings_updated_at = $at
+            """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$bin", s.Bin), ("$min", s.ReorderPoint), ("$at", at));
 
     // ---------- Kardex ----------
 

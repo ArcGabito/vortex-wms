@@ -130,8 +130,12 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
         {
             var status = await c.ScalarAsync<string?>("SELECT status FROM receipts WHERE id = $id", tx, ("$id", receiptId));
             Require(status == ReceiptStatuses.Expected, T("error.solo_se_anula_una_recepcion"));
-            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Voided, "receipt", receiptId,
-                await c.ScalarAsync<string?>("SELECT number FROM receipts WHERE id = $id", tx, ("$id", receiptId)), null);
+            var receipt = await c.FirstOrDefaultAsync("SELECT number, purchase_order_id FROM receipts WHERE id = $id",
+                r => new { Number = r.Str("number"), PurchaseOrderId = r.GuidOrNull("purchase_order_id") }, tx, ("$id", receiptId));
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Voided, "receipt", receiptId, receipt!.Number, null);
+            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.ReceiptCancelled,
+                new ReceiptCancelled(receiptId, receipt.Number, receipt.PurchaseOrderId),
+                subjectType: "receipt", subjectId: receipt.Number, id: DeterministicId.From("receipt_cancel", receiptId));
             return await c.ExecAsync("UPDATE receipts SET status = 'cancelled' WHERE id = $id", tx, ("$id", receiptId));
         }, ct);
     }
@@ -177,15 +181,25 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
 
         if (existing is not null)
         {
-            if (existing.Status != ReceiptStatuses.Expected)
-                return;
-            foreach (var line in lines)
+            if (existing.Status == ReceiptStatuses.Received)
             {
-                await c.ExecAsync("""
-                    UPDATE receipt_lines SET received_qty = $qty
-                    WHERE receipt_id = $id AND line_no = (SELECT MIN(line_no) FROM receipt_lines WHERE receipt_id = $id AND item_id = $item)
-                    """, tx, ("$qty", line.Quantity), ("$id", existing.Id), ("$item", line.ItemId));
+                // También se recibió aquí (o es el eco de la propia recepción): quedan las cantidades del hub.
+                var local = await c.QueryAsync("SELECT item_id, SUM(received_qty) AS qty FROM receipt_lines WHERE receipt_id = $id GROUP BY item_id",
+                    r => (Item: r.Guid("item_id"), Qty: r.Dec("qty")), tx, ("$id", existing.Id));
+                var same = lines.All(l => local.Any(x => x.Item == l.ItemId && x.Qty == l.Quantity))
+                    && local.Where(x => x.Qty != 0).All(x => lines.Any(l => l.ItemId == x.Item));
+                if (same)
+                    return;
+                await c.ExecAsync("UPDATE receipt_lines SET received_qty = 0 WHERE receipt_id = $id", tx, ("$id", existing.Id));
+                await SetReceivedAsync(c, tx, existing.Id, lines);
+                await SyncConflicts.RecordAsync(c, tx, occurredAt, SyncConflictKinds.ReceiptQuantities, existing.Id, g.Number, null);
+                return;
             }
+            if (existing.Status == ReceiptStatuses.Cancelled)
+                await SyncConflicts.RecordAsync(c, tx, occurredAt, SyncConflictKinds.ReceivedAfterCancel, existing.Id, g.Number, null);
+            else if (existing.Status != ReceiptStatuses.Expected)
+                return;
+            await SetReceivedAsync(c, tx, existing.Id, lines);
             await c.ExecAsync("UPDATE receipts SET status = 'received', received_at = $at WHERE id = $id", tx,
                 ("$id", existing.Id), ("$at", occurredAt));
             return;
@@ -205,6 +219,21 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
         }
     }
 
+    /// <summary><c>receipt.cancelled</c> de otro equipo: la recepción esperada ya no se espera.</summary>
+    internal static Task ApplyCancelledAsync(SqliteConnection c, SqliteTransaction tx, ReceiptCancelled e) =>
+        c.ExecAsync("UPDATE receipts SET status = 'cancelled' WHERE id = $id AND status = 'expected'", tx, ("$id", e.ReceiptId));
+
+    private static async Task SetReceivedAsync(SqliteConnection c, SqliteTransaction tx, Guid receiptId, IReadOnlyList<QuantityLine> lines)
+    {
+        foreach (var line in lines)
+        {
+            await c.ExecAsync("""
+                UPDATE receipt_lines SET received_qty = $qty
+                WHERE receipt_id = $id AND line_no = (SELECT MIN(line_no) FROM receipt_lines WHERE receipt_id = $id AND item_id = $item)
+                """, tx, ("$qty", line.Quantity), ("$id", receiptId), ("$item", line.ItemId));
+        }
+    }
+
     private async Task PostAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid receiptId, string number,
         Guid? purchaseOrderId, Guid siteId, Guid? supplierId, IReadOnlyList<QuantityLine> lines)
     {
@@ -212,7 +241,10 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
         {
             if (await StockLedger.TracksInventoryAsync(c, tx, line.ItemId))
                 await StockLedger.ApplyAsync(c, tx, now, Context.UserName,
-                    new StockLedger.Entry(siteId, line.ItemId, line.Quantity, MovementKinds.Receipt, "receipt", receiptId, number));
+                    new StockLedger.Entry(siteId, line.ItemId, line.Quantity, MovementKinds.Receipt, "receipt", receiptId, number,
+                        // Mismo Id en todos los equipos: si dos reciben la misma orden de compra sin conexión, el stock sube
+                        // una sola vez (gana la versión que el hub recibió primero).
+                        MovementId: DeterministicId.From("receipt_line", receiptId, line.ItemId)));
         }
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.GoodsReceived,
             new GoodsReceived(receiptId, number, purchaseOrderId, siteId, supplierId, lines),

@@ -19,6 +19,7 @@ public sealed class WmsWorkspace
         Orders = new OrderService(db, context, clock);
         Receipts = new ReceiptService(db, context, clock);
         Audit = new AuditService(db, context, clock);
+        Conflicts = new SyncConflictService(db, context, clock);
         SyncStore = new SqliteSyncStore(db);
         SyncHandlers = new WmsSyncHandlers(db, Master, Orders, Receipts, clock);
     }
@@ -29,6 +30,7 @@ public sealed class WmsWorkspace
     public OrderService Orders { get; }
     public ReceiptService Receipts { get; }
     public AuditService Audit { get; }
+    public SyncConflictService Conflicts { get; }
     public SqliteSyncStore SyncStore { get; }
     public WmsSyncHandlers SyncHandlers { get; }
 
@@ -37,6 +39,8 @@ public sealed class WmsWorkspace
     {
         var db = new WmsDatabase(databasePath);
         await db.MigrateAsync(ct);
-        return new WmsWorkspace(db, context, clock ?? TimeProvider.System);
+        var workspace = new WmsWorkspace(db, context, clock ?? TimeProvider.System);
+        await workspace.SyncHandlers.PruneProcessedEventsAsync(ct);
+        return workspace;
     }
 }
