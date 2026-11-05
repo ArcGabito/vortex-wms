@@ -3,6 +3,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using VortexApi.Suite.Regional;
 using VortexApi.Suite.Text;
+using VortexWms.Core.Domain;
+using VortexWms.Core.Texts;
 
 namespace VortexWms.Core.Tests;
 
@@ -36,8 +38,8 @@ public sealed partial class TextsTests
     public void Cada_clave_usada_en_la_interfaz_existe()
     {
         var catalog = new TextCatalog().AddResources(Core, "VortexWms.Core.Texts");
-        var app = Path.Combine(RepoRoot(), "src", "VortexWms");
-        var used = Directory.EnumerateFiles(app, "*.*", SearchOption.AllDirectories)
+        var used = new[] { "VortexWms", "VortexWms.Core" }
+            .SelectMany(project => Directory.EnumerateFiles(Path.Combine(RepoRoot(), "src", project), "*.*", SearchOption.AllDirectories))
             .Where(f => (f.EndsWith(".razor") || f.EndsWith(".cs")) && !f.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}"))
             .SelectMany(f => KeyUse().Matches(File.ReadAllText(f)).Select(m => m.Groups[1].Value))
             .Where(k => !k.EndsWith('.'))
@@ -59,6 +61,25 @@ public sealed partial class TextsTests
         Assert.Equal(Languages.Portuguese, Languages.DefaultFor("BR"));
         Assert.Equal(Languages.English, Languages.DefaultFor("US"));
         Assert.Equal(Languages.Spanish, Languages.DefaultFor("PE"));
+    }
+
+    [Fact]
+    public async Task Los_mensajes_de_la_logica_salen_en_el_idioma_elegido()
+    {
+        var t = new TestWorkspace(role: WmsPermissions.Operator);
+        await t.InitializeAsync();
+        try
+        {
+            await t.Wms.Receipts.ReceiveDirectAsync(t.Central, null, [new DocumentLine(t.Coffee, 10)]);
+            using var _ = CoreText.Use(Languages.English);
+            var ex = await Assert.ThrowsAsync<WmsValidationException>(() =>
+                t.Wms.Inventory.AdjustAsync(t.Central, t.Coffee, 7, null, AdjustmentReasons.Count, null));
+            Assert.StartsWith("Your role (operario) doesn't allow", ex.Message);
+        }
+        finally
+        {
+            await t.DisposeAsync();
+        }
     }
 
     private static string Markers(string text) =>

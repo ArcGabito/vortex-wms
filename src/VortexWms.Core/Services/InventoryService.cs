@@ -6,6 +6,8 @@ using VortexWms.Core.Domain;
 using VortexWms.Core.Integration;
 using VortexWms.Core.Sync;
 
+using static VortexWms.Core.Texts.CoreText;
+
 namespace VortexWms.Core.Services;
 
 /// <summary>Existencias por sede, kardex, ajustes, transferencias y el resumen del panel.</summary>
@@ -88,17 +90,17 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Adjust);
-        Require(countedQuantity is not null ^ delta is not null, "Indica la cantidad contada o la diferencia.");
-        Require(AdjustmentReasons.All.Contains(reason), "Motivo de ajuste no válido.");
-        Require(countedQuantity is null or >= 0, "El conteo no puede ser negativo.");
+        Require(countedQuantity is not null ^ delta is not null, T("error.indica_la_cantidad_contada_la"));
+        Require(AdjustmentReasons.All.Contains(reason), T("error.motivo_de_ajuste_no_valido"));
+        Require(countedQuantity is null or >= 0, T("error.el_conteo_no_puede_ser"));
 
         return InTransactionAsync(async (c, tx, now) =>
         {
             await RequireSiteAndItemAsync(c, tx, siteId, itemId);
             var current = await StockLedger.OnHandAsync(c, tx, siteId, itemId);
             var change = countedQuantity is { } counted ? counted - current : delta!.Value;
-            Require(change != 0, "El ajuste no cambia el stock.");
-            Require(current + change >= 0, $"El stock no puede quedar negativo (actual: {current:0.##}).");
+            Require(change != 0, T("error.el_ajuste_no_cambia_el"));
+            Require(current + change >= 0, T("error.el_stock_no_puede_quedar", current));
             var item = await InventoryService.ItemLabelAsync(c, tx, itemId);
             await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.StockAdjusted, "item", itemId, item,
                 $"{(change > 0 ? "+" : "")}{change:0.##} ({reason}){(Clean(note) is { } n ? $": {n}" : "")}");
@@ -111,9 +113,9 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Transfer);
-        Require(fromSiteId != toSiteId, "El origen y el destino deben ser distintos.");
-        Require(lines.Count > 0, "Agrega al menos un artículo.");
-        Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
+        Require(fromSiteId != toSiteId, T("error.el_origen_el_destino_deben"));
+        Require(lines.Count > 0, T("error.agrega_al_menos_un_articulo"));
+        Require(lines.All(l => l.Quantity > 0), T("error.las_cantidades_deben_ser_mayores"));
         var merged = Merge(lines);
 
         return InTransactionAsync(async (c, tx, now) =>
@@ -123,7 +125,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
                 await RequireSiteAndItemAsync(c, tx, fromSiteId, line.ItemId);
                 var available = await StockLedger.AvailableAsync(c, tx, fromSiteId, line.ItemId);
                 Require(available >= line.Quantity,
-                    $"Stock disponible insuficiente de {await ItemLabelAsync(c, tx, line.ItemId)} en el origen ({available:0.##}).");
+                    T("error.stock_disponible_insuficiente_de_en", (await ItemLabelAsync(c, tx, line.ItemId)), available));
             }
             await RequireSiteAsync(c, tx, toSiteId);
 
@@ -148,7 +150,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     public Task UpdateStockSettingsAsync(Guid siteId, Guid itemId, string? bin, decimal? reorderPoint, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.StockSettings);
-        Require(reorderPoint is null or >= 0, "El mínimo no puede ser negativo.");
+        Require(reorderPoint is null or >= 0, T("error.el_minimo_no_puede_ser"));
         return InTransactionAsync(async (c, tx, now) =>
         {
             await c.ExecAsync("""
@@ -238,14 +240,14 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
 
     internal static async Task RequireSiteAsync(SqliteConnection c, SqliteTransaction tx, Guid siteId) =>
         Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM sites WHERE id = $id AND is_deleted = 0", tx, ("$id", siteId)) > 0,
-            "La sede no existe.");
+            T("error.la_sede_no_existe"));
 
     internal static async Task RequireSiteAndItemAsync(SqliteConnection c, SqliteTransaction tx, Guid siteId, Guid itemId)
     {
         await RequireSiteAsync(c, tx, siteId);
         var tracks = await c.ScalarAsync<long?>("SELECT track_inventory FROM items WHERE id = $id AND is_deleted = 0", tx, ("$id", itemId));
-        Require(tracks is not null, "El artículo no existe.");
-        Require(tracks == 1, "El artículo no controla inventario (servicio o sin stock).");
+        Require(tracks is not null, T("error.el_articulo_no_existe"));
+        Require(tracks == 1, T("error.el_articulo_no_controla_inventario"));
     }
 
     internal static async Task<string> ItemLabelAsync(SqliteConnection c, SqliteTransaction? tx, Guid itemId) =>

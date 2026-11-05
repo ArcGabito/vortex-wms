@@ -12,8 +12,8 @@ Los tamaños (S, M, L, XL) son relativos entre fases y se vuelven a estimar al e
 > Antes de la fase 0 va la **base común de la suite**: impuestos y monedas de `VortexApi.Suite` (el costo y el valor
 > del stock se redondean según la moneda de la empresa), formatos regionales, idiomas y auditoría. Los roles de la
 > fase 0 usan la matriz de permisos común. La fase 8 deja de ser solo Perú: cada país es un paquete de localización.
-> La interfaz ya está en español, inglés y portugués, con selector en Configuración → Este equipo; falta traducir los
-> mensajes de validación de la lógica.
+> La interfaz ya está en español, inglés y portugués, con selector en Configuración → Este equipo, y los mensajes de
+> validación también salen en ese idioma.
 
 ## Dónde estamos (0.1.0)
 
