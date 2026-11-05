@@ -3,16 +3,16 @@
     <table class="data" style="min-width:520px">
         <thead>
             <tr>
-                <th>Artículo</th>
-                <th class="num">Cantidad</th>
+                <th>@T("picklist.articulo")</th>
+                <th class="num">@T("picklist.cantidad")</th>
                 @if (ShowStock)
                 {
-                    <th class="num">En sede</th>
+                    <th class="num">@T("picklist.en_sede")</th>
                 }
                 @if (ShowPrice)
                 {
-                    <th class="num">Precio</th>
-                    <th class="num">Subtotal</th>
+                    <th class="num">@T("picklist.precio")</th>
+                    <th class="num">@T("picklist.subtotal")</th>
                 }
             </tr>
         </thead>

@@ -1,26 +1,26 @@
 @page "/pedidos"
 @inherits WmsPage
 
-<SectionContent SectionName="page-title">Pedidos</SectionContent>
+<SectionContent SectionName="page-title">@T("orders.pedidos_2")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Pedidos y despachos</h2>
-            <p>Los pedidos del ERP y del CRM llegan aquí con su stock reservado. Prepáralos y despáchalos desde el almacén.</p>
+            <h2>@T("orders.pedidos_despachos")</h2>
+            <p>@T("orders.los_pedidos_del_erp_del")</p>
         </div>
     </div>
 
     <div class="filters">
         <div class="field search">
-            <label>Buscar</label>
+            <label>@T("orders.buscar")</label>
             <div class="input-icon">
                 <Icon Name="search" Size="16" />
-                <input class="control" placeholder="N.º, cliente o guía" value="@_search" @oninput="OnSearchInput" />
+                <input class="control" placeholder="@(T("orders.cliente_guia"))" value="@_search" @oninput="OnSearchInput" />
             </div>
         </div>
         <div class="field" style="width:auto">
-            <label>Estado</label>
+            <label>@T("orders.estado")</label>
             <div class="segmented">
                 @foreach (var (value, label) in Tabs)
                 {
@@ -29,7 +29,7 @@
             </div>
         </div>
         <div class="actions">
-            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.CreateOrder))" @onclick="OpenNew"><Icon Name="plus" Size="18" />Nuevo pedido</button>
+            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.CreateOrder))" @onclick="OpenNew"><Icon Name="plus" Size="18" />@T("orders.nuevo_pedido")</button>
         </div>
     </div>
 
@@ -37,8 +37,8 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="clipboard" Title="@(_status == "open" ? "No hay pedidos por despachar" : "No hay pedidos")"
-                        Text="Los pedidos que se registren en el ERP o el CRM aparecerán aquí automáticamente." />
+            <EmptyState Icon="clipboard" Title="@(_status == "open" ? T("orders.no_hay_pedidos_por_despachar") : T("orders.no_hay_pedidos"))"
+                        Text="@(T("orders.los_pedidos_que_se_registren"))" />
         }
         else
         {
@@ -46,13 +46,13 @@
                 <table class="data">
                     <thead>
                         <tr>
-                            <th>Pedido</th>
-                            <th>Cliente</th>
-                            <th class="num">Unidades</th>
-                            <th class="num">Total</th>
-                            <th>Fecha</th>
-                            <th>Estado</th>
-                            <th class="actions-col">Acciones</th>
+                            <th>@T("orders.pedido")</th>
+                            <th>@T("orders.cliente")</th>
+                            <th class="num">@T("orders.unidades")</th>
+                            <th class="num">@T("orders.total")</th>
+                            <th>@T("orders.fecha")</th>
+                            <th>@T("orders.estado")</th>
+                            <th class="actions-col">@T("orders.acciones")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -69,14 +69,14 @@
                                 </td>
                                 <td style="max-width:260px">
                                     <div class="two-line">
-                                        <span class="t1 @(o.CustomerName is null ? "faint" : "")">@(o.CustomerName ?? "Cliente sin registrar")</span>
-                                        <span class="t2 @(o.SiteName is null ? "warn-text" : "")">@(o.SiteName is null ? "Sede por asignar" : $"Desde {o.SiteName}")</span>
+                                        <span class="t1 @(o.CustomerName is null ? "faint" : "")">@(o.CustomerName ?? T("orders.cliente_sin_registrar"))</span>
+                                        <span class="t2 @(o.SiteName is null ? "warn-text" : "")">@(o.SiteName is null ? T("orders.sede_por_asignar") : T("orders.desde", o.SiteName))</span>
                                     </div>
                                 </td>
                                 <td class="num">
                                     <div class="two-line" style="align-items:flex-end">
                                         <span class="t1">@Fmt.Qty(o.Units)</span>
-                                        <span class="t2">@o.LineCount @(o.LineCount == 1 ? "artículo" : "artículos")</span>
+                                        <span class="t2">@o.LineCount @(o.LineCount == 1 ? T("orders.articulo") : T("orders.articulos"))</span>
                                     </div>
                                 </td>
                                 <td class="num strong">@Fmt.Money(o.Total, o.CurrencyCode)</td>
@@ -86,11 +86,11 @@
                                         <span class="t2">
                                             @if (o.DispatchedAt is not null)
                                             {
-                                                @($"Despachado{(o.Carrier is null ? "" : $" · {o.Carrier}")}{(o.TrackingNumber is null ? "" : $" · {o.TrackingNumber}")}")
+                                                @T("orders.despachado")@(o.Carrier is null ? "" : $" · {o.Carrier}")@(o.TrackingNumber is null ? "" : $" · {o.TrackingNumber}")
                                             }
                                             else
                                             {
-                                                @($"Creado {Fmt.Ago(o.CreatedAt)}")
+                                                @(T("orders.creado", Fmt.Ago(o.CreatedAt)))
                                             }
                                         </span>
                                     </div>
@@ -100,17 +100,17 @@
                                     <KebabMenu>
                                         @if (o.Status == OrderStatuses.Pending)
                                         {
-                                            <button disabled="@(!Session.Can(WmsPermissions.Pick))" @onclick="() => StartPickingAsync(o)"><Icon Name="play" Size="18" />Empezar preparación</button>
+                                            <button disabled="@(!Session.Can(WmsPermissions.Pick))" @onclick="() => StartPickingAsync(o)"><Icon Name="play" Size="18" />@T("orders.empezar_preparacion")</button>
                                         }
                                         @if (open)
                                         {
-                                            <button disabled="@(!Session.Can(WmsPermissions.Dispatch))" @onclick="() => OpenDispatch(o)"><Icon Name="truck" Size="18" />Despachar</button>
+                                            <button disabled="@(!Session.Can(WmsPermissions.Dispatch))" @onclick="() => OpenDispatch(o)"><Icon Name="truck" Size="18" />@T("orders.despachar_2")</button>
                                         }
-                                        <button @onclick="() => OpenDetail(o)"><Icon Name="eye" Size="18" />@(open ? "Lista de picking" : "Ver detalle")</button>
+                                        <button @onclick="() => OpenDetail(o)"><Icon Name="eye" Size="18" />@(open ? T("orders.lista_de_picking") : T("orders.ver_detalle"))</button>
                                         @if (open)
                                         {
                                             <hr />
-                                            <button class="danger" disabled="@(!Session.Can(WmsPermissions.CancelOrder))" @onclick="() => _cancel = o"><Icon Name="ban" Size="18" />Cancelar pedido</button>
+                                            <button class="danger" disabled="@(!Session.Can(WmsPermissions.CancelOrder))" @onclick="() => _cancel = o"><Icon Name="ban" Size="18" />@T("orders.cancelar_pedido")</button>
                                         }
                                     </KebabMenu>
                                 </td>
@@ -119,20 +119,20 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="pedidos" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("orders.pedidos"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>
 
 @if (_new is { } n)
 {
-    <Modal Title="Nuevo pedido" Subtitle="Reserva el stock en la sede elegida y avisa al ERP y al CRM." Size="lg" Error="@_error" OnClose="Close">
+    <Modal Title="@(T("orders.nuevo_pedido"))" Subtitle="@(T("orders.reserva_el_stock_en_la"))" Size="lg" Error="@_error" OnClose="Close">
         <ChildContent>
             <div class="form-row">
                 <div class="field">
-                    <label>Cliente</label>
+                    <label>@T("orders.cliente")</label>
                     <select class="select" value="@n.CustomerId" @onchange="e => n.CustomerId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
-                        <option value="">Elige el cliente</option>
+                        <option value="">@T("orders.elige_el_cliente")</option>
                         @foreach (var customer in _customers)
                         {
                             <option value="@customer.Id">@customer.Label@(customer.Detail is null ? "" : $" · {customer.Detail}")</option>
@@ -140,9 +140,9 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Sede que despacha</label>
+                    <label>@T("orders.sede_que_despacha")</label>
                     <select class="select" value="@n.SiteId" @onchange="async e => { n.SiteId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; if (_lines is not null) await _lines.RefreshAvailabilityAsync(); }">
-                        <option value="">Elige la sede</option>
+                        <option value="">@T("orders.elige_la_sede")</option>
                         @foreach (var site in _sites)
                         {
                             <option value="@site.Id">@site.Name</option>
@@ -152,34 +152,34 @@
             </div>
             @if (_customers.Count == 0)
             {
-                <div class="alert info"><Icon Name="users" Size="18" /><span>Aún no hay clientes. Créalos en <a href="socios">Contactos</a> o en el CRM.</span></div>
+                <div class="alert info"><Icon Name="users" Size="18" /><span>@T("orders.aun_no_hay_clientes_crealos") <a href="socios">@T("orders.contactos")</a> @T("orders.en_el_crm")</span></div>
             }
-            <LineEditor Changed="StateHasChanged" @ref="_lines" Lines="n.Lines" ShowPrice PriceLabel="Precio" DefaultPrice="i => i.Price" AvailableFor="AvailableAtSiteAsync" />
+            <LineEditor Changed="StateHasChanged" @ref="_lines" Lines="n.Lines" ShowPrice PriceLabel="@(T("orders.precio"))" DefaultPrice="i => i.Price" AvailableFor="AvailableAtSiteAsync" />
             @if (n.Lines.Count > 0)
             {
                 <div style="display:flex;justify-content:flex-end;gap:10px;font-size:15px">
-                    <span class="muted">Total</span>
+                    <span class="muted">@T("orders.total")</span>
                     <strong>@Fmt.Money(n.Lines.Sum(l => l.Quantity * (l.Price ?? 0)), _currency)</strong>
                 </div>
             }
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="Close">Cancelar</button>
-            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0)" @onclick="SaveNewAsync">Crear pedido</button>
+            <button class="btn" @onclick="Close">@T("orders.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0)" @onclick="SaveNewAsync">@T("orders.crear_pedido")</button>
         </Footer>
     </Modal>
 }
 
 @if (_dispatch is { } dp)
 {
-    <Modal Title="@($"Despachar {dp.Order.Number}")" Subtitle="@($"{dp.Order.CustomerName ?? "Cliente sin registrar"} · descuenta el stock y avisa a la suite.")"
+    <Modal Title="@(T("orders.despachar", dp.Order.Number))" Subtitle="@($"{dp.Order.CustomerName ?? "Cliente sin registrar"} · descuenta el stock y avisa a la suite.")"
            Size="lg" Error="@_error" OnClose="Close">
         <ChildContent>
             <div class="form-row three">
                 <div class="field">
-                    <label>Sale de</label>
+                    <label>@T("orders.sale_de")</label>
                     <select class="select" value="@dp.SiteId" @onchange="e => dp.SiteId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
-                        <option value="">Elige la sede</option>
+                        <option value="">@T("orders.elige_la_sede")</option>
                         @foreach (var site in _sites)
                         {
                             <option value="@site.Id">@site.Name</option>
@@ -187,23 +187,23 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Transportista</label>
-                    <input class="control" placeholder="Olva, Shalom, propio…" @bind="dp.Carrier" />
+                    <label>@T("orders.transportista")</label>
+                    <input class="control" placeholder="@(T("orders.olva_shalom_propio"))" @bind="dp.Carrier" />
                 </div>
                 <div class="field">
-                    <label>N.º de guía</label>
+                    <label>@T("orders.de_guia")</label>
                     <input class="control" placeholder="T001-00012345" @bind="dp.Tracking" />
                 </div>
             </div>
             <PickList Lines="dp.Lines" ShowStock="dp.SiteId == dp.Order.SiteId" />
             @if (dp.SiteId != dp.Order.SiteId && dp.Order.SiteId != Guid.Empty)
             {
-                <div class="alert warn"><Icon Name="alert" Size="18" /><span>Se despachará desde otra sede: la reserva en @dp.Order.SiteName se libera igual.</span></div>
+                <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("orders.se_despachara_desde_otra_sede", dp.Order.SiteName)</span></div>
             }
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="Close">Cancelar</button>
-            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveDispatchAsync"><Icon Name="truck" Size="18" />Confirmar despacho</button>
+            <button class="btn" @onclick="Close">@T("orders.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveDispatchAsync"><Icon Name="truck" Size="18" />@T("orders.confirmar_despacho")</button>
         </Footer>
     </Modal>
 }
@@ -215,22 +215,22 @@
         <ChildContent>
             <PickList Lines="dt.Lines" ShowStock="dt.Order.Status is OrderStatuses.Pending or OrderStatuses.Picking" ShowPrice />
             <div style="display:flex;justify-content:flex-end;gap:10px;font-size:15px">
-                <span class="muted">Total</span>
+                <span class="muted">@T("orders.total")</span>
                 <strong>@Fmt.Money(dt.Order.Total, dt.Order.CurrencyCode)</strong>
             </div>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="Close">Cerrar</button>
+            <button class="btn" @onclick="Close">@T("orders.cerrar")</button>
         </Footer>
     </Modal>
 }
 
 @if (_cancel is { } cancel)
 {
-    <Modal Title="¿Cancelar el pedido?" Subtitle="@($"{cancel.Number} se cancelará en este WMS y se liberará el stock reservado.")" OnClose="Close">
+    <Modal Title="@(T("orders.cancelar_el_pedido"))" Subtitle="@(T("orders.se_cancelara_en_este_wms", cancel.Number))" OnClose="Close">
         <Footer>
-            <button class="btn" @onclick="Close">Volver</button>
-            <button class="btn btn-danger" disabled="@_busy" @onclick="CancelAsync">Cancelar pedido</button>
+            <button class="btn" @onclick="Close">@T("orders.volver")</button>
+            <button class="btn btn-danger" disabled="@_busy" @onclick="CancelAsync">@T("orders.cancelar_pedido")</button>
         </Footer>
     </Modal>
 }
@@ -256,7 +256,7 @@
 
     private static readonly (string Value, string Label)[] Tabs =
     [
-        ("open", "Por despachar"), (OrderStatuses.Dispatched, "Despachados"), (OrderStatuses.Cancelled, "Cancelados"), ("", "Todos"),
+        ("open", T("orders.por_despachar")), (OrderStatuses.Dispatched, T("orders.despachados")), (OrderStatuses.Cancelled, T("orders.cancelados")), ("", T("orders.todos")),
     ];
 
     private const int PageSize = 10;
@@ -297,11 +297,11 @@
 
     private static string SourceLabel(string source) => source.ToUpperInvariant() switch
     {
-        "ERP" => "Pedido del ERP",
-        "CRM" => "Pedido del CRM",
-        "POS" => "Pedido del POS",
-        "WMS" => "Creado en el WMS",
-        var other => $"Pedido de {other}",
+        "ERP" => T("orders.pedido_del_erp"),
+        "CRM" => T("orders.pedido_del_crm"),
+        "POS" => T("orders.pedido_del_pos"),
+        "WMS" => T("orders.creado_en_el_wms"),
+        var other => T("orders.pedido_de", other),
     };
 
     private async Task SetStatusAsync(string status)
@@ -343,7 +343,7 @@
             return;
         if (n.CustomerId is not { } customer || n.SiteId is not { } site)
         {
-            _error = "Elige el cliente y la sede que despacha.";
+            _error = T("orders.elige_el_cliente_la_sede");
             return;
         }
         _busy = true;
@@ -352,13 +352,13 @@
         _busy = false;
         if (_error is null)
         {
-            Toasts.Success($"Pedido {number} creado y stock reservado.");
+            Toasts.Success(T("orders.pedido_creado_stock_reservado", number));
             Close();
         }
     }
 
     private Task StartPickingAsync(OrderRow order) =>
-        RunAsync(() => Wms.Orders.StartPickingAsync(order.Id), $"{order.Number} en preparación.");
+        RunAsync(() => Wms.Orders.StartPickingAsync(order.Id), T("orders.en_preparacion", order.Number));
 
     private async Task OpenDispatch(OrderRow order)
     {
@@ -372,7 +372,7 @@
             return;
         if (dp.SiteId is not { } site)
         {
-            _error = "Elige la sede desde la que sale el pedido.";
+            _error = T("orders.elige_la_sede_desde_la");
             return;
         }
         _busy = true;
@@ -381,7 +381,7 @@
         _busy = false;
         if (_error is null)
         {
-            Toasts.Success($"{dp.Order.Number} despachado (guía interna {shipment}).");
+            Toasts.Success(T("orders.despachado_guia_interna", dp.Order.Number, shipment));
             Close();
         }
     }
@@ -394,7 +394,7 @@
         if (_cancel is not { } order)
             return;
         _busy = true;
-        await RunAsync(() => Wms.Orders.CancelAsync(order.Id), $"{order.Number} cancelado.");
+        await RunAsync(() => Wms.Orders.CancelAsync(order.Id), T("orders.cancelado", order.Number));
         _busy = false;
         Close();
     }

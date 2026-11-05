@@ -8,9 +8,9 @@
 
     public static (string Text, string Tone) ForStock(StockStatus status) => status switch
     {
-        StockStatus.InStock => ("En stock", "good"),
-        StockStatus.Low => ("Stock bajo", "warn"),
-        _ => ("Agotado", "bad"),
+        StockStatus.InStock => (T("statuspill.en_stock"), "good"),
+        StockStatus.Low => (T("statuspill.stock_bajo"), "warn"),
+        _ => (T("statuspill.agotado"), "bad"),
     };
 
     public static (string Text, string Tone) ForOrder(string status) => (Fmt.OrderStatus(status), status switch

@@ -30,7 +30,7 @@
 </div>
 
 @code {
-    [Parameter] public string Placeholder { get; set; } = "Escanea o busca por SKU, nombre o código de barras";
+    [Parameter] public string Placeholder { get; set; } = T("itempicker.escanea_busca_por_sku_nombre");
     [Parameter] public EventCallback<ItemRow> OnSelected { get; set; }
 
     private ElementReference _anchor, _input;

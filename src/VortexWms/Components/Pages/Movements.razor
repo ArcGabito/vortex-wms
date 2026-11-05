@@ -1,28 +1,28 @@
 @page "/movimientos"
 @inherits WmsPage
 
-<SectionContent SectionName="page-title">Movimientos</SectionContent>
+<SectionContent SectionName="page-title">@T("movements.movimientos_2")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Kardex</h2>
-            <p>Cada entrada y salida queda registrada con su saldo, quién la hizo y de dónde vino. No se edita ni se borra.</p>
+            <h2>@T("movements.kardex")</h2>
+            <p>@T("movements.cada_entrada_salida_queda_registrada")</p>
         </div>
     </div>
 
     <div class="filters">
         <div class="field search">
-            <label>Buscar</label>
+            <label>@T("movements.buscar")</label>
             <div class="input-icon">
                 <Icon Name="search" Size="16" />
-                <input class="control" placeholder="SKU o documento" value="@_search" @oninput="OnSearchInput" />
+                <input class="control" placeholder="@(T("movements.sku_documento"))" value="@_search" @oninput="OnSearchInput" />
             </div>
         </div>
         <div class="field">
-            <label>Sede</label>
+            <label>@T("movements.sede")</label>
             <select class="select" value="@_site" @onchange="async e => { _site = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
-                <option value="">Todas</option>
+                <option value="">@T("movements.todas")</option>
                 @foreach (var site in _sites)
                 {
                     <option value="@site.Id">@site.Name</option>
@@ -30,9 +30,9 @@
             </select>
         </div>
         <div class="field">
-            <label>Tipo</label>
+            <label>@T("movements.tipo")</label>
             <select class="select" value="@_kind" @onchange="async e => { _kind = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
-                <option value="">Todos</option>
+                <option value="">@T("movements.todos")</option>
                 @foreach (var kind in MovementKinds.All)
                 {
                     <option value="@kind">@Fmt.MovementKind(kind)</option>
@@ -45,7 +45,7 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="arrows" Title="Sin movimientos" Text="@(_search != "" || _site != "" || _kind != "" ? "Nada coincide con los filtros." : "Aún no hay entradas ni salidas registradas.")" />
+            <EmptyState Icon="arrows" Title="@(T("movements.sin_movimientos"))" Text="@(_search != "" || _site != "" || _kind != "" ? T("movements.nada_coincide_con_los_filtros") : T("movements.aun_no_hay_entradas_ni"))" />
         }
         else
         {
@@ -53,13 +53,13 @@
                 <table class="data">
                     <thead>
                         <tr>
-                            <th>Fecha</th>
-                            <th>Artículo</th>
-                            <th>Movimiento</th>
-                            <th>Sede</th>
-                            <th class="num">Cantidad</th>
-                            <th class="num">Saldo</th>
-                            <th>Usuario</th>
+                            <th>@T("movements.fecha")</th>
+                            <th>@T("movements.articulo")</th>
+                            <th>@T("movements.movimiento")</th>
+                            <th>@T("movements.sede")</th>
+                            <th class="num">@T("movements.cantidad")</th>
+                            <th class="num">@T("movements.saldo")</th>
+                            <th>@T("movements.usuario")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -101,7 +101,7 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="movimientos" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("movements.movimientos"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>

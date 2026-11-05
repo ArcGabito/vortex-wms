@@ -1,28 +1,28 @@
 @page "/articulos"
 @inherits WmsPage
 
-<SectionContent SectionName="page-title">Artículos</SectionContent>
+<SectionContent SectionName="page-title">@T("items.articulos_2")</SectionContent>
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Catálogo de artículos</h2>
-            <p>Es el mismo catálogo del ERP y del POS: lo que crees o cambies aquí se comparte con toda la suite.</p>
+            <h2>@T("items.catalogo_de_articulos")</h2>
+            <p>@T("items.es_el_mismo_catalogo_del")</p>
         </div>
     </div>
 
     <div class="filters">
         <div class="field search">
-            <label>Buscar</label>
+            <label>@T("items.buscar")</label>
             <div class="input-icon">
                 <Icon Name="search" Size="16" />
-                <input class="control" placeholder="Nombre o SKU" value="@_search" @oninput="OnSearchInput" />
+                <input class="control" placeholder="@(T("items.nombre_sku"))" value="@_search" @oninput="OnSearchInput" />
             </div>
         </div>
         <div class="field">
-            <label>Categoría</label>
+            <label>@T("items.categoria")</label>
             <select class="select" value="@_category" @onchange="async e => { _category = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
-                <option value="">Todas</option>
+                <option value="">@T("items.todas")</option>
                 @foreach (var category in _categories)
                 {
                     <option value="@category">@category</option>
@@ -30,7 +30,7 @@
             </select>
         </div>
         <div class="actions">
-            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.EditCatalog))" @onclick="() => Open(null)"><Icon Name="plus" Size="18" />Nuevo artículo</button>
+            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.EditCatalog))" @onclick="() => Open(null)"><Icon Name="plus" Size="18" />@T("items.nuevo_articulo")</button>
         </div>
     </div>
 
@@ -38,8 +38,8 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="tag" Title="@(_search != "" || _category != "" ? "Nada coincide con la búsqueda" : "El catálogo está vacío")"
-                        Text="Los artículos llegan desde el hub (ERP, POS) o puedes crearlos aquí." />
+            <EmptyState Icon="tag" Title="@(_search != "" || _category != "" ? T("items.nada_coincide_con_la_busqueda") : T("items.el_catalogo_esta_vacio"))"
+                        Text="@(T("items.los_articulos_llegan_desde_el"))" />
         }
         else
         {
@@ -47,13 +47,13 @@
                 <table class="data">
                     <thead>
                         <tr>
-                            <th>Artículo</th>
-                            <th>Categoría</th>
-                            <th>Unidad</th>
-                            <th class="num">Precio</th>
-                            <th class="num">Stock total</th>
-                            <th>Estado</th>
-                            <th class="actions-col">Acciones</th>
+                            <th>@T("items.articulo")</th>
+                            <th>@T("items.categoria")</th>
+                            <th>@T("items.unidad")</th>
+                            <th class="num">@T("items.precio")</th>
+                            <th class="num">@T("items.stock_total")</th>
+                            <th>@T("items.estado")</th>
+                            <th class="actions-col">@T("items.acciones")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -67,7 +67,7 @@
                                     </div>
                                 </td>
                                 <td>
-                                    <div class="two-line"><span class="t1">@(item.Category ?? "Sin categoría")</span><span class="t2">@(item.Barcode ?? "Sin código de barras")</span></div>
+                                    <div class="two-line"><span class="t1">@(item.Category ?? T("items.sin_categoria"))</span><span class="t2">@(item.Barcode ?? T("items.sin_codigo_de_barras"))</span></div>
                                 </td>
                                 <td><span class="muted">@item.Unit</span></td>
                                 <td class="num strong">@Fmt.Money(item.Price, item.CurrencyCode)</td>
@@ -78,38 +78,38 @@
                                             <span class="t1">@Fmt.Qty(item.OnHand)</span>
                                             @if (item.Reserved > 0)
                                             {
-                                                <span class="t2">@Fmt.Qty(item.Reserved) reservado</span>
+                                                <span class="t2">@T("items.reservado", Fmt.Qty(item.Reserved))</span>
                                             }
                                         </div>
                                     }
                                     else
                                     {
-                                        <span class="faint">@(item.Kind == "Service" ? "Servicio" : "No controla stock")</span>
+                                        <span class="faint">@(item.Kind == "Service" ? T("items.servicio") : T("items.no_controla_stock"))</span>
                                     }
                                 </td>
                                 <td>
                                     <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
                                         @if (item.IsActive)
                                         {
-                                            <StatusPill Text="Activo" Tone="good" />
+                                            <StatusPill Text="@(T("items.activo"))" Tone="good" />
                                         }
                                         else
                                         {
-                                            <StatusPill Text="Inactivo" Tone="neutral" />
+                                            <StatusPill Text="@(T("items.inactivo"))" Tone="neutral" />
                                         }
                                         @if (item.Pending)
                                         {
-                                            <span class="tag" title="Guardado en este equipo; se enviará al hub al sincronizar">POR ENVIAR</span>
+                                            <span class="tag" title="@(T("items.guardado_en_este_equipo_se"))">@T("items.por_enviar")</span>
                                         }
                                     </div>
                                 </td>
                                 <td class="actions-col">
                                     <KebabMenu>
-                                        <button disabled="@(!Session.Can(WmsPermissions.EditCatalog))" @onclick="() => Open(item)"><Icon Name="edit" Size="18" />Editar</button>
+                                        <button disabled="@(!Session.Can(WmsPermissions.EditCatalog))" @onclick="() => Open(item)"><Icon Name="edit" Size="18" />@T("items.editar")</button>
                                         @if (item.TrackInventory)
                                         {
-                                            <a href="@($"inventario?q={Uri.EscapeDataString(item.Sku)}")"><Icon Name="boxes" Size="18" />Ver stock por sede</a>
-                                            <a href="@($"movimientos?q={Uri.EscapeDataString(item.Sku)}")"><Icon Name="list" Size="18" />Ver kardex</a>
+                                            <a href="@($"inventario?q={Uri.EscapeDataString(item.Sku)}")"><Icon Name="boxes" Size="18" />@T("items.ver_stock_por_sede")</a>
+                                            <a href="@($"movimientos?q={Uri.EscapeDataString(item.Sku)}")"><Icon Name="list" Size="18" />@T("items.ver_kardex")</a>
                                         }
                                     </KebabMenu>
                                 </td>
@@ -118,38 +118,38 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="artículos" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("items.articulos"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
         }
     }
 </div>
 
 @if (_form is { } f)
 {
-    <Modal Title="@(f.Id is null ? "Nuevo artículo" : "Editar artículo")" Subtitle="Se guarda en este equipo y se envía al hub para el resto de la suite."
+    <Modal Title="@(f.Id is null ? T("items.nuevo_articulo") : T("items.editar_articulo"))" Subtitle="@(T("items.se_guarda_en_este_equipo"))"
            Error="@_error" OnClose="Close">
         <ChildContent>
             <div class="segmented">
-                <button class="@(f.Kind == "Product" ? "on" : "")" @onclick="@(() => f.Kind = "Product")">Producto</button>
-                <button class="@(f.Kind == "Service" ? "on" : "")" @onclick="@(() => f.Kind = "Service")">Servicio</button>
+                <button class="@(f.Kind == "Product" ? "on" : "")" @onclick="@(() => f.Kind = "Product")">@T("items.producto")</button>
+                <button class="@(f.Kind == "Service" ? "on" : "")" @onclick="@(() => f.Kind = "Service")">@T("items.servicio")</button>
             </div>
             <div class="form-row">
                 <div class="field">
-                    <label>SKU</label>
-                    <input class="control" placeholder="CAFE-250" @bind="f.Sku" style="text-transform:uppercase" />
+                    <label>@T("items.sku")</label>
+                    <input class="control" placeholder="@(T("items.cafe_250"))" @bind="f.Sku" style="text-transform:uppercase" />
                 </div>
                 <div class="field">
-                    <label>Código de barras</label>
+                    <label>@T("items.codigo_de_barras")</label>
                     <input class="control" placeholder="7750000000017" @bind="f.Barcode" />
                 </div>
             </div>
             <div class="field">
-                <label>Nombre</label>
-                <input class="control" placeholder="Café tostado 250 g" @bind="f.Name" />
+                <label>@T("items.nombre")</label>
+                <input class="control" placeholder="@(T("items.cafe_tostado_250"))" @bind="f.Name" />
             </div>
             <div class="form-row">
                 <div class="field">
-                    <label>Categoría</label>
-                    <input class="control" list="item-categories" placeholder="Bebidas" @bind="f.Category" />
+                    <label>@T("items.categoria")</label>
+                    <input class="control" list="item-categories" placeholder="@(T("items.bebidas"))" @bind="f.Category" />
                     <datalist id="item-categories">
                         @foreach (var category in _categories)
                         {
@@ -158,7 +158,7 @@
                     </datalist>
                 </div>
                 <div class="field">
-                    <label>Unidad</label>
+                    <label>@T("items.unidad")</label>
                     <input class="control" list="item-units" @bind="f.Unit" />
                     <datalist id="item-units">
                         @foreach (var unit in Units)
@@ -170,11 +170,11 @@
             </div>
             <div class="form-row three">
                 <div class="field">
-                    <label>Precio de venta</label>
+                    <label>@T("items.precio_de_venta")</label>
                     <input class="control" type="number" min="0" step="0.01" @bind="f.Price" />
                 </div>
                 <div class="field">
-                    <label>Moneda</label>
+                    <label>@T("items.moneda")</label>
                     <select class="select" @bind="f.Currency">
                         @foreach (var currency in Currencies.Union([f.Currency]))
                         {
@@ -183,29 +183,29 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Impuesto</label>
+                    <label>@T("items.impuesto")</label>
                     <select class="select" @bind="f.TaxCode">
-                        <option value="igv">IGV</option>
-                        <option value="exonerado">Exonerado</option>
-                        <option value="inafecto">Inafecto</option>
+                        <option value="igv">@T("items.igv")</option>
+                        <option value="exonerado">@T("items.exonerado")</option>
+                        <option value="inafecto">@T("items.inafecto")</option>
                     </select>
                 </div>
             </div>
             <div class="field">
-                <label>Descripción (opcional)</label>
+                <label>@T("items.descripcion_opcional")</label>
                 <input class="control" @bind="f.Description" />
             </div>
             <div style="display:flex;gap:22px;flex-wrap:wrap">
                 @if (f.Kind == "Product")
                 {
-                    <label class="check"><input type="checkbox" @bind="f.TrackInventory" />Controlar stock en el almacén</label>
+                    <label class="check"><input type="checkbox" @bind="f.TrackInventory" />@T("items.controlar_stock_en_el_almacen")</label>
                 }
-                <label class="check"><input type="checkbox" @bind="f.IsActive" />Activo</label>
+                <label class="check"><input type="checkbox" @bind="f.IsActive" />@T("items.activo")</label>
             </div>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="Close">Cancelar</button>
-            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAsync">@(f.Id is null ? "Crear artículo" : "Guardar cambios")</button>
+            <button class="btn" @onclick="Close">@T("items.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAsync">@(f.Id is null ? T("items.crear_articulo") : T("items.guardar_cambios"))</button>
         </Footer>
     </Modal>
 }
@@ -296,7 +296,7 @@
                 await Wms.Master.UpdateItemAsync(id, draft);
             else
                 await Wms.Master.CreateItemAsync(draft);
-        }, f.Id is null ? $"Artículo {f.Name.Trim()} creado." : "Cambios guardados.");
+        }, f.Id is null ? T("items.articulo_creado", f.Name.Trim()) : T("items.cambios_guardados"));
         _busy = false;
         if (_error is null)
             Close();

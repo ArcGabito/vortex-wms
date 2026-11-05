@@ -10,42 +10,42 @@
         <aside class="sidebar @(_menuOpen ? "open" : "")">
             <div class="brand"><Logo /></div>
             <nav class="nav" @onclick="() => _menuOpen = false">
-                <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><Icon Name="home" />Panel</NavLink>
-                <NavLink class="nav-link" href="inventario"><Icon Name="boxes" />Inventario</NavLink>
+                <NavLink class="nav-link" href="" Match="NavLinkMatch.All"><Icon Name="home" />@T("nav.panel")</NavLink>
+                <NavLink class="nav-link" href="inventario"><Icon Name="boxes" />@T("nav.inventario")</NavLink>
                 <NavLink class="nav-link" href="recepciones">
-                    <Icon Name="inbox" />Recepciones
+                    <Icon Name="inbox" />@T("nav.recepciones")
                     @if (_receipts > 0)
                     {
                         <span class="count">@_receipts</span>
                     }
                 </NavLink>
                 <NavLink class="nav-link" href="pedidos">
-                    <Icon Name="truck" />Pedidos
+                    <Icon Name="truck" />@T("nav.pedidos")
                     @if (_orders > 0)
                     {
                         <span class="count">@_orders</span>
                     }
                 </NavLink>
-                <NavLink class="nav-link" href="movimientos"><Icon Name="arrows" />Movimientos</NavLink>
+                <NavLink class="nav-link" href="movimientos"><Icon Name="arrows" />@T("nav.movimientos")</NavLink>
 
-                <div class="nav-section">Catálogo</div>
-                <NavLink class="nav-link" href="articulos"><Icon Name="tag" />Artículos</NavLink>
-                <NavLink class="nav-link" href="sedes"><Icon Name="warehouse" />Almacenes</NavLink>
-                <NavLink class="nav-link" href="socios"><Icon Name="users" />Contactos</NavLink>
+                <div class="nav-section">@T("nav.catalogo")</div>
+                <NavLink class="nav-link" href="articulos"><Icon Name="tag" />@T("nav.articulos")</NavLink>
+                <NavLink class="nav-link" href="sedes"><Icon Name="warehouse" />@T("nav.almacenes")</NavLink>
+                <NavLink class="nav-link" href="socios"><Icon Name="users" />@T("nav.contactos")</NavLink>
 
-                <div class="nav-section">Sistema</div>
+                <div class="nav-section">@T("nav.sistema")</div>
                 @if (Session.Can(WmsPermissions.ViewAudit))
                 {
-                    <NavLink class="nav-link" href="auditoria"><Icon Name="list" />Auditoría</NavLink>
+                    <NavLink class="nav-link" href="auditoria"><Icon Name="list" />@T("nav.auditoria")</NavLink>
                 }
-                <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />Configuración</NavLink>
+                <NavLink class="nav-link" href="configuracion"><Icon Name="settings" />@T("nav.configuracion")</NavLink>
             </nav>
 
             <div class="promo">
                 <BoxArt Class="box-art" />
-                <h4>Libre y de código abierto</h4>
-                <p>Vortex WMS es AGPL-3.0. Hecho en Perú para LATAM y el mundo.</p>
-                <button class="btn btn-accent btn-sm" @onclick="OpenRepoAsync">Contribuir</button>
+                <h4>@T("nav.libre_de_codigo_abierto")</h4>
+                <p>@T("nav.vortex_wms_es_agpl_3")</p>
+                <button class="btn btn-accent btn-sm" @onclick="OpenRepoAsync">@T("nav.contribuir")</button>
             </div>
         </aside>
 
