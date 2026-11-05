@@ -204,7 +204,7 @@
 
     protected override async Task LoadAsync()
     {
-        _sites = await Wms.Master.GetSitesAsync(activeOnly: true);
+        _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
         _failed = await Session.GetFailedAsync();
         _conflicts = await Wms.Conflicts.GetOpenAsync();
     }

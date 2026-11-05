@@ -68,5 +68,6 @@ public sealed class TestWorkspace(string deviceTag = "TEST", string role = "admi
         public Guid? DefaultSiteId => null;
         public string Role { get; set; } = role;
         public bool Can(string permission) => WmsPermissions.Matrix.Can(Role, "User", permission);
+        public IReadOnlyList<Guid> SiteIds { get; set; } = [];
     }
 }

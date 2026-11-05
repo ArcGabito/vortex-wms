@@ -17,6 +17,9 @@ public interface IWmsContext
 
     /// <summary>Si el usuario puede hacer la acción (<see cref="WmsPermissions"/>).</summary>
     bool Can(string permission);
+
+    /// <summary>Sedes asignadas al usuario en el hub (<c>Access.SiteIds</c>). Vacío: trabaja en todas.</summary>
+    IReadOnlyList<Guid> SiteIds { get; }
 }
 
 /// <summary>Dato inválido o regla de negocio incumplida: se muestra tal cual al usuario.</summary>

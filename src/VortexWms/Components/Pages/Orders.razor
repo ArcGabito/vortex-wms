@@ -278,7 +278,7 @@
 
     protected override async Task LoadAsync()
     {
-        _sites = await Wms.Master.GetSitesAsync(activeOnly: true);
+        _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
         _customers = await Wms.Master.GetPartyOptionsAsync(suppliers: false);
         _currency = (await Wms.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
         _result = await Wms.Orders.GetOrdersAsync(_search, _status, _page, PageSize);

@@ -28,7 +28,7 @@
             <label>@T("inventory.sede")</label>
             <select class="select" value="@_site" @onchange="e => ApplyFilterAsync(() => _site = e.Value?.ToString() ?? string.Empty)">
                 <option value="">@T("inventory.todas")</option>
-                @foreach (var site in _sites)
+                @foreach (var site in _mySites)
                 {
                     <option value="@site.Id">@site.Name</option>
                 }
@@ -156,7 +156,7 @@
                     <label>@T("inventory.sede")</label>
                     <select class="select" value="@a.SiteId" @onchange="async e => { a.SiteId = ParseGuid(e.Value); await RefreshCurrentAsync(); }">
                         <option value="">@T("inventory.elige_la_sede")</option>
-                        @foreach (var site in _sites)
+                        @foreach (var site in _mySites)
                         {
                             <option value="@site.Id">@site.Name</option>
                         }
@@ -224,7 +224,7 @@
                     <label>@T("inventory.origen")</label>
                     <select class="select" value="@t.FromId" @onchange="async e => { t.FromId = ParseGuid(e.Value); if (_lines is not null) await _lines.RefreshAvailabilityAsync(); }">
                         <option value="">@T("inventory.elige_el_origen")</option>
-                        @foreach (var site in _sites)
+                        @foreach (var site in _mySites)
                         {
                             <option value="@site.Id">@site.Name</option>
                         }
@@ -313,6 +313,7 @@
     private DashboardSummary? _summary;
     private PagedResult<StockRow>? _result;
     private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<SiteRow> _mySites = [];
     private IReadOnlyList<string> _categories = [];
     private readonly Dictionary<(Guid, Guid), StockRow> _selected = [];
     private string _search = "", _site = "", _category = "", _status = "";
@@ -358,6 +359,7 @@
     protected override async Task LoadAsync()
     {
         _sites = await Wms.Master.GetSitesAsync(activeOnly: true);
+        _mySites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
         _categories = await Wms.Master.GetCategoriesAsync();
         _summary = await Wms.Inventory.GetDashboardAsync();
         _result = await Wms.Inventory.GetStockAsync(CurrentQuery() with { Page = _page, PageSize = PageSize });
@@ -436,7 +438,7 @@
         _error = null;
         _adjust = new AdjustForm
         {
-            SiteId = row?.SiteId ?? ParseGuid(_site) ?? Session.DefaultSiteId ?? _sites.FirstOrDefault()?.Id,
+            SiteId = row?.SiteId ?? ParseGuid(_site) ?? Session.DefaultSiteId ?? _mySites.FirstOrDefault()?.Id,
             Current = row?.OnHand,
         };
         if (row is not null)

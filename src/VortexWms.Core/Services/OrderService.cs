@@ -28,12 +28,12 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             ("$status", string.IsNullOrWhiteSpace(status) ? null : status), ("$search", string.IsNullOrWhiteSpace(search) ? null : search.Trim()),
             ("$like", Like(search)), ("$limit", pageSize), ("$offset", (page - 1) * pageSize),
         };
-        var total = await c.ScalarAsync<int>($"SELECT COUNT(*) {from} {where}", null, args);
+        var total = await c.ScalarAsync<int>($"SELECT COUNT(*) {from} {where}{MySites("o.site_id")}", null, args);
         var rows = await c.QueryAsync($"""
             SELECT o.*, p.name AS customer_name, t.name AS site_name,
                    (SELECT COUNT(*) FROM order_lines l WHERE l.order_id = o.id) AS line_count,
                    (SELECT COALESCE(SUM(quantity), 0) FROM order_lines l WHERE l.order_id = o.id) AS units
-            {from} {where}
+            {from} {where}{MySites("o.site_id")}
             ORDER BY CASE o.status WHEN 'picking' THEN 0 WHEN 'pending' THEN 1 ELSE 2 END, o.created_at DESC
             LIMIT $limit OFFSET $offset
             """, r => new OrderRow(r.Guid("id"), r.Str("number"), r.Str("source"), r.GuidOrNull("customer_id"),
@@ -71,6 +71,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         return InTransactionAsync(async (c, tx, now) =>
         {
             await InventoryService.RequireSiteAsync(c, tx, siteId);
+            await RequireSiteAccessAsync(c, tx, siteId);
             var orderId = Guid.NewGuid();
             var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Order, Context.DeviceTag);
             var orderLines = merged.Select(l => new OrderLine(l.ItemId, l.Quantity, l.UnitPrice ?? 0)).ToList();
@@ -141,6 +142,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         {
             var status = await StatusAsync(c, tx, orderId);
             Require(status == OrderStatuses.Pending, T("error.solo_se_puede_preparar_un"));
+            await RequireOrderSiteAsync(c, tx, orderId);
             var number = await c.ScalarAsync<string?>("SELECT number FROM orders WHERE id = $id", tx, ("$id", orderId));
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.OrderPickingStarted, new OrderPickingStarted(orderId, number),
                 subjectType: "order", subjectId: number, id: DeterministicId.From("order_picking", orderId));
@@ -166,6 +168,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             var from = siteId ?? order.SiteId;
             Require(from != Guid.Empty, T("error.elige_el_almacen_desde_el"));
             await InventoryService.RequireSiteAsync(c, tx, from);
+            await RequireSiteAccessAsync(c, tx, from);
 
             var lines = await LinesAsync(c, tx, orderId);
             foreach (var line in lines.Where(l => l.Tracked))
@@ -209,6 +212,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         {
             var status = await StatusAsync(c, tx, orderId);
             Require(status is OrderStatuses.Pending or OrderStatuses.Picking, T("error.solo_se_cancela_un_pedido"));
+            await RequireOrderSiteAsync(c, tx, orderId);
             var number = await c.ScalarAsync<string?>("SELECT number FROM orders WHERE id = $id", tx, ("$id", orderId));
             await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "order", orderId, number, Clean(reason));
             await ReleaseAndCancelAsync(c, tx, now, orderId);
@@ -233,6 +237,14 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             await ReleaseAndCancelAsync(c, tx, now, e.OrderId);
         else if (status == OrderStatuses.Dispatched)
             await SyncConflicts.RecordAsync(c, tx, now, SyncConflictKinds.CancelAfterDispatch, e.OrderId, e.Number, e.Reason);
+    }
+
+    /// <summary>El pedido es de una de las sedes del usuario (sin sede asignada todavía, cualquiera puede tomarlo).</summary>
+    private async Task RequireOrderSiteAsync(SqliteConnection c, SqliteTransaction tx, Guid orderId)
+    {
+        var site = await c.ScalarAsync<string?>("SELECT site_id FROM orders WHERE id = $id", tx, ("$id", orderId));
+        if (site is not null && Guid.Parse(site) is var siteId && siteId != Guid.Empty)
+            await RequireSiteAccessAsync(c, tx, siteId);
     }
 
     private static async Task ReleaseAndCancelAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid orderId)

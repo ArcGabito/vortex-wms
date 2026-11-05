@@ -51,6 +51,7 @@
   "error.las_cantidades_no_pueden_ser": "Quantities can't be negative.",
   "error.motivo_de_ajuste_no_valido": "Invalid adjustment reason.",
   "error.permiso_supervisor": "Your role ({0}) doesn't allow {1}. Ask a supervisor to do it.",
+  "error.sede_no_asignada": "You don't work at site {0}. Ask the administrator to assign it to you in the hub.",
   "error.solo_se_anula_una_recepcion": "Only a pending receipt can be voided.",
   "error.solo_se_cancela_un_pedido": "Only an unshipped order can be cancelled.",
   "error.solo_se_puede_preparar_un": "Only a pending order can be picked.",

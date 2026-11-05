@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Sedes por usuario:** si el administrador asigna sedes al usuario en el hub, el WMS solo le muestra y le deja operar
+  esas sedes (stock, movimientos, pedidos, recepciones, panel); puede transferir hacia cualquier sede. Sin sedes
+  asignadas, o para los administradores de la organización, todas.
 - **Fase 0: varios equipos sin conexión.** Si dos equipos reciben la misma orden de compra o despachan el mismo pedido
   sin conexión, el stock se mueve una sola vez (Ids deterministas); si registraron datos distintos, queda la versión
   que llegó primero al hub y el caso se ve en Configuración → Conflictos entre equipos. Empezar la preparación,

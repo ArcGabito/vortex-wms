@@ -136,7 +136,7 @@
 
     protected override async Task LoadAsync()
     {
-        _sites = await Wms.Master.GetSitesAsync();
+        _sites = await Wms.Master.GetSitesAsync(mineOnly: true);
         var query = new MovementQuery(_search, Guid.TryParse(_site, out var site) ? site : null, _kind == "" ? null : _kind, _page, PageSize);
         _result = await Wms.Inventory.GetMovementsAsync(query);
         if (_result.Items.Count == 0 && _page > 1)
