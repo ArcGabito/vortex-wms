@@ -9,8 +9,7 @@ namespace VortexWms.Services;
 /// </summary>
 public static class Txt
 {
-    public static readonly TextCatalog Catalog =
-        new TextCatalog().AddResources(typeof(VortexWms.Core.WmsWorkspace).Assembly, "VortexWms.Core.Texts");
+    public static TextCatalog Catalog => VortexWms.Core.Texts.CoreText.Catalog;
 
     public static string T(string key, params object?[] args) => Catalog.Get(Fmt.Language, key, args);
 }

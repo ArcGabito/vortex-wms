@@ -4,6 +4,8 @@ using VortexWms.Core.Domain;
 using VortexWms.Core.Integration;
 using VortexWms.Core.Sync;
 
+using static VortexWms.Core.Texts.CoreText;
+
 namespace VortexWms.Core.Services;
 
 /// <summary>
@@ -61,9 +63,9 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.CreateOrder);
-        Require(customerId != Guid.Empty, "Elige el cliente.");
-        Require(lines.Count > 0, "Agrega al menos un artículo.");
-        Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
+        Require(customerId != Guid.Empty, T("error.elige_el_cliente"));
+        Require(lines.Count > 0, T("error.agrega_al_menos_un_articulo"));
+        Require(lines.All(l => l.Quantity > 0), T("error.las_cantidades_deben_ser_mayores"));
         var merged = InventoryService.Merge(lines);
 
         return InTransactionAsync(async (c, tx, now) =>
@@ -120,7 +122,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         return InTransactionAsync(async (c, tx, _) =>
         {
             var status = await StatusAsync(c, tx, orderId);
-            Require(status == OrderStatuses.Pending, "Solo se puede preparar un pedido pendiente.");
+            Require(status == OrderStatuses.Pending, T("error.solo_se_puede_preparar_un"));
             return await c.ExecAsync("UPDATE orders SET status = 'picking' WHERE id = $id", tx, ("$id", orderId));
         }, ct);
     }
@@ -138,10 +140,10 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             {
                 Status = r.Str("status"), SiteId = r.Guid("site_id"), CustomerId = r.GuidOrNull("customer_id"), Number = r.Str("number"),
             }, tx, ("$id", orderId));
-            Require(order is not null, "El pedido no existe.");
-            Require(order!.Status is OrderStatuses.Pending or OrderStatuses.Picking, "El pedido ya fue despachado o cancelado.");
+            Require(order is not null, T("error.el_pedido_no_existe"));
+            Require(order!.Status is OrderStatuses.Pending or OrderStatuses.Picking, T("error.el_pedido_ya_fue_despachado"));
             var from = siteId ?? order.SiteId;
-            Require(from != Guid.Empty, "Elige el almacén desde el que se despacha.");
+            Require(from != Guid.Empty, T("error.elige_el_almacen_desde_el"));
             await InventoryService.RequireSiteAsync(c, tx, from);
 
             var lines = await LinesAsync(c, tx, orderId);
@@ -149,7 +151,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             {
                 var onHand = await StockLedger.OnHandAsync(c, tx, from, line.ItemId);
                 Require(onHand >= line.Quantity,
-                    $"Stock insuficiente de {await InventoryService.ItemLabelAsync(c, tx, line.ItemId)} ({onHand:0.##} de {line.Quantity:0.##}).");
+                    T("error.stock_insuficiente_de_de", (await InventoryService.ItemLabelAsync(c, tx, line.ItemId)), onHand, line.Quantity));
             }
 
             var shipmentId = Guid.NewGuid();
@@ -182,7 +184,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await StatusAsync(c, tx, orderId);
-            Require(status is OrderStatuses.Pending or OrderStatuses.Picking, "Solo se cancela un pedido sin despachar.");
+            Require(status is OrderStatuses.Pending or OrderStatuses.Picking, T("error.solo_se_cancela_un_pedido"));
             await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "order", orderId,
                 await c.ScalarAsync<string?>("SELECT number FROM orders WHERE id = $id", tx, ("$id", orderId)), null);
             var siteId = await c.ScalarAsync<string>("SELECT site_id FROM orders WHERE id = $id", tx, ("$id", orderId));

@@ -1,5 +1,7 @@
 using VortexApi.Suite.Security;
 
+using static VortexWms.Core.Texts.CoreText;
+
 namespace VortexWms.Core.Domain;
 
 /// <summary>
@@ -40,18 +42,18 @@ public static class WmsPermissions
 
     public static string Describe(string permission) => permission switch
     {
-        Receive => "recibir mercadería",
-        CancelReceipt => "anular recepciones",
-        CreateOrder => "crear pedidos",
-        Pick => "preparar pedidos",
-        Dispatch => "despachar pedidos",
-        CancelOrder => "cancelar pedidos",
-        Transfer => "transferir stock",
-        Adjust => "ajustar el stock",
-        StockSettings => "cambiar ubicaciones y mínimos",
-        CreateParty => "registrar clientes y proveedores",
-        EditCatalog => "editar artículos y almacenes",
-        ViewAudit => "ver la auditoría",
+        Receive => T("permiso.receive"),
+        CancelReceipt => T("permiso.cancelreceipt"),
+        CreateOrder => T("permiso.createorder"),
+        Pick => T("permiso.pick"),
+        Dispatch => T("permiso.dispatch"),
+        CancelOrder => T("permiso.cancelorder"),
+        Transfer => T("permiso.transfer"),
+        Adjust => T("permiso.adjust"),
+        StockSettings => T("permiso.stocksettings"),
+        CreateParty => T("permiso.createparty"),
+        EditCatalog => T("permiso.editcatalog"),
+        ViewAudit => T("permiso.viewaudit"),
         _ => permission,
     };
 }

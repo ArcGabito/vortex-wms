@@ -4,6 +4,8 @@ using VortexWms.Core.Domain;
 using VortexWms.Core.Integration;
 using VortexWms.Core.Sync;
 
+using static VortexWms.Core.Texts.CoreText;
+
 namespace VortexWms.Core.Services;
 
 /// <summary>
@@ -55,8 +57,8 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
     public Task<string> ReceiveDirectAsync(Guid siteId, Guid? supplierId, IReadOnlyList<DocumentLine> lines, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Receive);
-        Require(lines.Count > 0, "Agrega al menos un artículo.");
-        Require(lines.All(l => l.Quantity > 0), "Las cantidades deben ser mayores que cero.");
+        Require(lines.Count > 0, T("error.agrega_al_menos_un_articulo"));
+        Require(lines.All(l => l.Quantity > 0), T("error.las_cantidades_deben_ser_mayores"));
         var merged = InventoryService.Merge(lines);
 
         return InTransactionAsync(async (c, tx, now) =>
@@ -89,8 +91,8 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
     public Task<string> ReceiveExpectedAsync(Guid receiptId, IReadOnlyDictionary<int, decimal> received, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Receive);
-        Require(received.Values.All(q => q >= 0), "Las cantidades no pueden ser negativas.");
-        Require(received.Values.Any(q => q > 0), "Indica al menos una cantidad recibida.");
+        Require(received.Values.All(q => q >= 0), T("error.las_cantidades_no_pueden_ser"));
+        Require(received.Values.Any(q => q > 0), T("error.indica_al_menos_una_cantidad"));
 
         return InTransactionAsync(async (c, tx, now) =>
         {
@@ -99,8 +101,8 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
                 Number = r.Str("number"), Status = r.Str("status"), SiteId = r.Guid("site_id"),
                 PurchaseOrderId = r.GuidOrNull("purchase_order_id"), SupplierId = r.GuidOrNull("supplier_id"),
             }, tx, ("$id", receiptId));
-            Require(receipt is not null, "La recepción no existe.");
-            Require(receipt!.Status == ReceiptStatuses.Expected, "Esta recepción ya fue procesada.");
+            Require(receipt is not null, T("error.la_recepcion_no_existe"));
+            Require(receipt!.Status == ReceiptStatuses.Expected, T("error.esta_recepcion_ya_fue_procesada"));
             await InventoryService.RequireSiteAsync(c, tx, receipt.SiteId);
 
             var lines = await c.QueryAsync("SELECT line_no, item_id FROM receipt_lines WHERE receipt_id = $id ORDER BY line_no",
@@ -127,7 +129,7 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
         return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await c.ScalarAsync<string?>("SELECT status FROM receipts WHERE id = $id", tx, ("$id", receiptId));
-            Require(status == ReceiptStatuses.Expected, "Solo se anula una recepción pendiente.");
+            Require(status == ReceiptStatuses.Expected, T("error.solo_se_anula_una_recepcion"));
             await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Voided, "receipt", receiptId,
                 await c.ScalarAsync<string?>("SELECT number FROM receipts WHERE id = $id", tx, ("$id", receiptId)), null);
             return await c.ExecAsync("UPDATE receipts SET status = 'cancelled' WHERE id = $id", tx, ("$id", receiptId));

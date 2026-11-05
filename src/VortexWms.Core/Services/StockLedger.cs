@@ -4,6 +4,8 @@ using VortexWms.Core.Domain;
 using VortexWms.Core.Integration;
 using VortexWms.Core.Sync;
 
+using static VortexWms.Core.Texts.CoreText;
+
 namespace VortexWms.Core.Services;
 
 /// <summary>
@@ -149,7 +151,7 @@ public abstract class WmsService(WmsDatabase db, IWmsContext context, TimeProvid
     protected void RequirePermission(string permission)
     {
         if (!Context.Can(permission))
-            throw new WmsValidationException($"Tu rol ({Context.Role}) no permite {WmsPermissions.Describe(permission)}. Pide a un supervisor que lo haga.");
+            throw new WmsValidationException(T("error.permiso_supervisor", Context.Role, WmsPermissions.Describe(permission)));
     }
 
     /// <summary>Deja la acción en la bitácora, en la misma transacción que la acción.</summary>
