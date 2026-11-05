@@ -28,7 +28,8 @@ public static class SuiteEvents
     public const string PurchaseOrderCreated = "purchase_order.created";
 }
 
-public sealed record QuantityLine(Guid ItemId, decimal Quantity);
+/// <summary>Línea con cantidad; en <c>goods.received</c> también su costo (fase 1, aditivo).</summary>
+public sealed record QuantityLine(Guid ItemId, decimal Quantity, decimal? UnitCost = null, decimal? TotalCost = null);
 
 // ---------- Publicados por el WMS ----------
 
@@ -42,8 +43,11 @@ public sealed record GoodsReceived(
 /// usarlo en vez de sumar <c>quantityDelta</c>, así no cuenta dos veces lo que también llega en
 /// <c>goods.received</c> o <c>stock.transferred</c>. Extiende v1 con <c>reference</c> (número de documento).
 /// </summary>
+/// Fase 1 agrega (aditivos) el costo con que se valorizó el movimiento (<c>unitCost</c>, <c>totalCost</c>, en la moneda
+/// de la empresa) y, en ventas y despachos, el importe de venta (<c>saleAmount</c>).
 public sealed record StockAdjusted(
-    Guid SiteId, Guid ItemId, decimal QuantityDelta, decimal QuantityOnHand, string Reason, string? Reference);
+    Guid SiteId, Guid ItemId, decimal QuantityDelta, decimal QuantityOnHand, string Reason, string? Reference,
+    decimal? UnitCost = null, decimal? TotalCost = null, decimal? SaleAmount = null);
 
 /// <summary><c>stock.transferred</c>. Extiende v1 con <c>number</c>.</summary>
 public sealed record StockTransferred(Guid TransferId, string Number, Guid FromSiteId, Guid ToSiteId, IReadOnlyList<QuantityLine> Lines);

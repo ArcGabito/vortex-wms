@@ -39,14 +39,15 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         var total = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM stock s JOIN items i ON i.id = s.item_id JOIN sites t ON t.id = s.site_id {StockWhere}{MySites("s.site_id")}", null, args);
         var rows = await c.QueryAsync($"{StockSelect} {StockWhere}{MySites("s.site_id")} ORDER BY i.name COLLATE NOCASE, t.code LIMIT $limit OFFSET $offset",
             ReadStock, null, args);
-        return new PagedResult<StockRow>(rows, total, q.Page, q.PageSize);
+        return new PagedResult<StockRow>(await WithCostsAsync(c, rows), total, q.Page, q.PageSize);
     }
 
     public async Task<StockRow?> GetStockRowAsync(Guid siteId, Guid itemId, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
-        return await c.FirstOrDefaultAsync($"{StockSelect} WHERE s.site_id = $site AND s.item_id = $item", ReadStock, null,
+        var row = await c.FirstOrDefaultAsync($"{StockSelect} WHERE s.site_id = $site AND s.item_id = $item", ReadStock, null,
             ("$site", siteId), ("$item", itemId));
+        return row is null ? null : (await WithCostsAsync(c, [row]))[0];
     }
 
     public async Task<decimal> GetAvailableAsync(Guid siteId, Guid itemId, CancellationToken ct = default)
@@ -72,12 +73,17 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         await using var c = await Db.OpenAsync(ct);
         var rows = await c.QueryAsync($"{StockSelect} {StockWhere}{MySites("s.site_id")} ORDER BY i.name COLLATE NOCASE, t.code LIMIT $limit OFFSET $offset",
             ReadStock, null, StockArgs(q with { Page = 1, PageSize = int.MaxValue }));
-        var csv = new StringBuilder("sku,articulo,categoria,sede,ubicacion,stock,reservado,disponible,minimo,unidad,precio,moneda,valor\n");
-        foreach (var r in rows)
+        var costs = Context.Can(WmsPermissions.ViewCosts);
+        var csv = new StringBuilder("sku,articulo,categoria,sede,ubicacion,stock,reservado,disponible,minimo,unidad,precio,moneda,valor"
+            + (costs ? ",costo_promedio,valor_costo\n" : "\n"));
+        foreach (var r in await WithCostsAsync(c, rows))
         {
             csv.AppendJoin(',', Csv(r.Sku), Csv(r.ItemName), Csv(r.Category), Csv(r.SiteCode), Csv(r.Bin), Num(r.OnHand),
                 Num(r.Reserved), Num(r.Available), r.ReorderPoint is { } m ? Num(m) : "", Csv(r.Unit), Num(r.Price),
-                Csv(r.CurrencyCode), Num(r.Value)).Append('\n');
+                Csv(r.CurrencyCode), Num(r.PriceValue));
+            if (costs)
+                csv.Append(',').Append(r.AvgCost is { } a ? Num(a) : "").Append(',').Append(r.CostValue is { } v ? Num(v) : "");
+            csv.Append('\n');
         }
         return csv.ToString();
     }
@@ -135,10 +141,11 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
             var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Transfer, Context.DeviceTag);
             foreach (var line in merged)
             {
-                await StockLedger.ApplyAsync(c, tx, now, Context.UserName, new StockLedger.Entry(fromSiteId, line.ItemId,
+                var sent = await StockLedger.ApplyValuedAsync(c, tx, now, Context.UserName, new StockLedger.Entry(fromSiteId, line.ItemId,
                     -line.Quantity, MovementKinds.TransferOut, "transfer", transferId, number, Clean(note)));
+                // Llega al destino con el costo con que salió del origen.
                 await StockLedger.ApplyAsync(c, tx, now, Context.UserName, new StockLedger.Entry(toSiteId, line.ItemId,
-                    line.Quantity, MovementKinds.TransferIn, "transfer", transferId, number, Clean(note)));
+                    line.Quantity, MovementKinds.TransferIn, "transfer", transferId, number, Clean(note), UnitCost: sent.UnitCost));
             }
 
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.StockTransferred,
@@ -186,6 +193,17 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
             ON CONFLICT (site_id, item_id) DO UPDATE SET bin = $bin, reorder_point = $min, settings_updated_at = $at
             """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$bin", s.Bin), ("$min", s.ReorderPoint), ("$at", at));
 
+    /// <summary>Valoriza una vez los movimientos anteriores a la fase 1 (bases migradas).</summary>
+    internal async Task ValueExistingMovementsAsync(CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        if (await c.ScalarAsync<long>("SELECT COUNT(*) FROM movements WHERE unit_cost IS NULL") == 0)
+            return;
+        await using var tx = c.BeginTransaction();
+        await Valuation.RevalueAllAsync(c, tx);
+        await tx.CommitAsync(ct);
+    }
+
     // ---------- Kardex ----------
 
     public async Task<PagedResult<MovementRow>> GetMovementsAsync(MovementQuery q, CancellationToken ct = default)
@@ -195,10 +213,14 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
             WHERE ($search IS NULL OR i.sku LIKE $like OR i.name LIKE $like OR m.reference LIKE $like)
               AND ($site IS NULL OR m.site_id = $site)
               AND ($kind IS NULL OR m.kind = $kind)
+              AND ($item IS NULL OR m.item_id = $item)
+              AND ($from IS NULL OR m.occurred_at >= $from)
+              AND ($to IS NULL OR m.occurred_at < $to)
             """;
         var args = new (string, object?)[]
         {
             ("$search", Clean(q.Search)), ("$like", Like(q.Search)), ("$site", q.SiteId), ("$kind", Clean(q.Kind)),
+            ("$item", q.ItemId), ("$from", q.From), ("$to", q.To),
             ("$limit", q.PageSize), ("$offset", (q.Page - 1) * q.PageSize),
         };
         const string from = "FROM movements m LEFT JOIN items i ON i.id = m.item_id LEFT JOIN sites t ON t.id = m.site_id";
@@ -209,7 +231,10 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
             {from} {where}{MySites("m.site_id")} ORDER BY m.occurred_at DESC, m.rowid DESC LIMIT $limit OFFSET $offset
             """, r => new MovementRow(r.Guid("id"), r.Time("occurred_at"), r.Str("kind"), r.Guid("site_id"), r.Str("site_name"),
                 r.Guid("item_id"), r.Str("sku"), r.Str("item_name"), r.Dec("quantity"), r.Dec("on_hand_after"),
-                r.StrOrNull("reason"), r.StrOrNull("reference"), r.StrOrNull("user_name"), r.StrOrNull("note")), null, args);
+                r.StrOrNull("reason"), r.StrOrNull("reference"), r.StrOrNull("user_name"), r.StrOrNull("note"),
+                r.DecOrNull("unit_cost"), r.DecOrNull("total_cost"), r.DecOrNull("value_after"), r.StrOrNull("operation_type")), null, args);
+        if (!Context.Can(WmsPermissions.ViewCosts))
+            rows = rows.Select(m => m with { UnitCost = null, TotalCost = null, ValueAfter = null }).ToList();
         return new PagedResult<MovementRow>(rows, total, q.Page, q.PageSize);
     }
 
@@ -234,11 +259,27 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         var receipts = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM receipts WHERE status = 'expected'{MySites("site_id")}");
         var low = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM stock WHERE on_hand > 0 AND reorder_point IS NOT NULL AND on_hand - reserved <= reorder_point{MySites("site_id")}");
         var outOfStock = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM stock s JOIN items i ON i.id = s.item_id WHERE s.on_hand <= 0 AND i.is_deleted = 0{MySites("s.site_id")}");
-        var value = await c.ScalarAsync<decimal>($"SELECT COALESCE(SUM(s.on_hand * i.price), 0) FROM stock s JOIN items i ON i.id = s.item_id WHERE s.on_hand > 0{MySites("s.site_id")}");
-        var currency = await c.ScalarAsync<string?>("SELECT currency_code FROM company WHERE id = 1") ?? "PEN";
+        var currency = await Valuation.CurrencyAsync(c, null);
+
+        // Costos (fase 1): valor del inventario a costo, costo de lo vendido y margen de los últimos 30 días. Los montos
+        // se suman en decimal, no en SQL, porque se guardan como texto exacto.
+        decimal? value = null, costOfSales = null, sales = null, margin = null;
+        if (Context.Can(WmsPermissions.ViewCosts))
+        {
+            var stock = await c.QueryAsync($"SELECT on_hand, avg_cost FROM stock WHERE on_hand > 0{MySites("site_id")}",
+                r => r.Dec("on_hand") * r.Dec("avg_cost"));
+            value = currency.Round(stock.Sum());
+            var sold = await c.QueryAsync($"""
+                SELECT total_cost, sale_amount FROM movements
+                WHERE occurred_at >= $d AND kind IN ('sale', 'shipment', 'sale_void', 'sale_return'){MySites("site_id")}
+                """, r => (Cost: r.Dec("total_cost"), Amount: r.Dec("sale_amount")), null, ("$d", d30));
+            costOfSales = currency.Round(-sold.Sum(m => m.Cost));
+            sales = currency.Round(sold.Sum(m => m.Amount));
+            margin = sales - costOfSales;
+        }
 
         return new DashboardSummary(activeItems, categories, units, Change(units, units - units30), ordersOpen, ordersPicking,
-            dispatched, Change(dispatched, dispatchedPrev), receipts, low, outOfStock, value, currency);
+            dispatched, Change(dispatched, dispatchedPrev), receipts, low, outOfStock, value, currency.Code, costOfSales, sales, margin);
     }
 
     /// <summary>Variación porcentual; null si no hay base de comparación.</summary>
@@ -256,7 +297,17 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     private static StockRow ReadStock(SqliteDataReader r) => new(
         r.Guid("site_id"), r.Str("site_code"), r.Str("site_name"), r.Guid("item_id"), r.Str("sku"), r.Str("item_name"),
         r.StrOrNull("category"), r.Str("unit"), r.StrOrNull("barcode"), r.Dec("on_hand"), r.Dec("reserved"),
-        r.DecOrNull("reorder_point"), r.StrOrNull("bin"), r.Dec("price"), r.Str("currency_code"), r.Time("updated_at"));
+        r.DecOrNull("reorder_point"), r.StrOrNull("bin"), r.Dec("price"), r.Str("currency_code"), r.Time("updated_at"),
+        r.DecOrNull("avg_cost"));
+
+    /// <summary>Costo promedio y valor a costo, solo para quien puede ver costos.</summary>
+    private async Task<List<StockRow>> WithCostsAsync(SqliteConnection c, IEnumerable<StockRow> rows)
+    {
+        if (!Context.Can(WmsPermissions.ViewCosts))
+            return rows.Select(r => r with { AvgCost = null, CostValue = null }).ToList();
+        var currency = await Valuation.CurrencyAsync(c, null);
+        return rows.Select(r => r with { CostValue = r.AvgCost is { } avg ? currency.Round(r.OnHand * avg) : null }).ToList();
+    }
 
     internal static List<DocumentLine> Merge(IEnumerable<DocumentLine> lines) =>
         lines.GroupBy(l => l.ItemId).Select(g => new DocumentLine(g.Key, g.Sum(l => l.Quantity), g.First().UnitPrice)).ToList();

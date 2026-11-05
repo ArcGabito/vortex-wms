@@ -31,6 +31,9 @@ public static class WmsPermissions
 
     public const string ViewAudit = "audit.view";
 
+    /// <summary>Ver costos, valor del inventario a costo, costo de lo vendido y margen.</summary>
+    public const string ViewCosts = "cost.view";
+
     public const string Operator = "operario";
     public const string Supervisor = "supervisor";
     public const string ReadOnly = "consulta";
@@ -38,7 +41,7 @@ public static class WmsPermissions
     public static readonly PermissionMatrix Matrix = PermissionMatrix.Create(Operator,
         (ReadOnly, []),
         (Operator, [Receive, Pick, Dispatch, Transfer]),
-        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit]));
+        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -54,6 +57,7 @@ public static class WmsPermissions
         CreateParty => T("permiso.createparty"),
         EditCatalog => T("permiso.editcatalog"),
         ViewAudit => T("permiso.viewaudit"),
+        ViewCosts => T("permiso.viewcosts"),
         _ => permission,
     };
 }

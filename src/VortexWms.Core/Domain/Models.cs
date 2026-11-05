@@ -80,10 +80,12 @@ public enum StockStatus
 public sealed record StockRow(
     Guid SiteId, string SiteCode, string SiteName, Guid ItemId, string Sku, string ItemName, string? Category, string Unit,
     string? Barcode, decimal OnHand, decimal Reserved, decimal? ReorderPoint, string? Bin, decimal Price, string CurrencyCode,
-    DateTimeOffset UpdatedAt)
+    DateTimeOffset UpdatedAt, decimal? AvgCost = null, decimal? CostValue = null)
 {
     public decimal Available => OnHand - Reserved;
-    public decimal Value => OnHand * Price;
+
+    /// <summary>Valor a precio de venta.</summary>
+    public decimal PriceValue => OnHand * Price;
 
     public StockStatus Status => OnHand <= 0 ? StockStatus.OutOfStock
         : ReorderPoint is { } min && Available <= min ? StockStatus.Low
@@ -122,9 +124,12 @@ public static class AdjustmentReasons
 
 public sealed record MovementRow(
     Guid Id, DateTimeOffset OccurredAt, string Kind, Guid SiteId, string SiteName, Guid ItemId, string Sku, string ItemName,
-    decimal Quantity, decimal OnHandAfter, string? Reason, string? Reference, string? UserName, string? Note);
+    decimal Quantity, decimal OnHandAfter, string? Reason, string? Reference, string? UserName, string? Note,
+    decimal? UnitCost = null, decimal? TotalCost = null, decimal? ValueAfter = null, string? OperationType = null);
 
-public sealed record MovementQuery(string? Search = null, Guid? SiteId = null, string? Kind = null, int Page = 1, int PageSize = 15);
+/// <param name="From">Desde (inclusive) y <paramref name="To"/> hasta (exclusive): el periodo del kardex valorizado.</param>
+public sealed record MovementQuery(string? Search = null, Guid? SiteId = null, string? Kind = null, int Page = 1, int PageSize = 15,
+    Guid? ItemId = null, DateTimeOffset? From = null, DateTimeOffset? To = null);
 
 public sealed record DocumentLine(Guid ItemId, decimal Quantity, decimal? UnitPrice = null);
 
@@ -168,5 +173,5 @@ public sealed record ReceiptLineRow(int LineNo, Guid ItemId, string Sku, string 
 
 public sealed record DashboardSummary(
     int ActiveItems, int Categories, decimal UnitsOnHand, decimal? UnitsChangePct, int OrdersOpen, int OrdersPicking,
-    int Dispatched30d, decimal? DispatchedChangePct, int ReceiptsExpected, int LowStock, int OutOfStock, decimal StockValue,
-    string CurrencyCode);
+    int Dispatched30d, decimal? DispatchedChangePct, int ReceiptsExpected, int LowStock, int OutOfStock, decimal? StockValue,
+    string CurrencyCode, decimal? CostOfSales30d = null, decimal? Sales30d = null, decimal? Margin30d = null);

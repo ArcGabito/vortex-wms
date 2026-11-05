@@ -322,6 +322,12 @@
             _error = T("receipts.elige_la_sede_que_recibe");
             return;
         }
+        if (d.Lines.Any(l => l.Price is not >= 0))
+        {
+            // El costo de entrada valoriza el inventario (costo promedio): en un ingreso directo es obligatorio.
+            _error = T("receipts.indica_el_costo_unitario");
+            return;
+        }
         _busy = true;
         string? number = null;
         _error = await TryAsync(async () => number = await Wms.Receipts.ReceiveDirectAsync(site, d.SupplierId, d.Lines.Select(l => l.ToDocumentLine()).ToList()));

@@ -15,14 +15,23 @@ namespace VortexWms.Core.Services;
 internal static class StockLedger
 {
     /// <param name="MovementId">Id fijo (derivado de un evento externo); por defecto uno nuevo.</param>
+    /// <param name="UnitCost">Costo unitario de una entrada con costo conocido (compra, transferencia); sin él, al promedio.</param>
+    /// <param name="SaleAmount">Importe de venta de una salida (ventas y despachos), para el margen.</param>
     public sealed record Entry(
         Guid SiteId, Guid ItemId, decimal Quantity, string Kind, string Reason, Guid? DocumentId = null, string? Reference = null,
-        string? Note = null, Guid? MovementId = null);
+        string? Note = null, Guid? MovementId = null, decimal? UnitCost = null, decimal? SaleAmount = null);
 
-    public static async Task<decimal> ApplyAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string? userName, Entry e)
+    /// <summary>Costo con que se valorizó un movimiento.</summary>
+    public sealed record Valued(decimal OnHand, decimal UnitCost, decimal TotalCost);
+
+    public static async Task<decimal> ApplyAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string? userName, Entry e) =>
+        (await ApplyValuedAsync(c, tx, now, userName, e)).OnHand;
+
+    /// <summary>Como <see cref="ApplyAsync"/>, y devuelve el costo con que quedó valorizado el movimiento.</summary>
+    public static async Task<Valued> ApplyValuedAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string? userName, Entry e)
     {
         if (e.MovementId is { } fixedId && await MovementExistsAsync(c, tx, fixedId))
-            return await OnHandAsync(c, tx, e.SiteId, e.ItemId);
+            return await ValuedAsync(c, tx, fixedId, await OnHandAsync(c, tx, e.SiteId, e.ItemId));
 
         await c.ExecAsync("""
             INSERT INTO stock (site_id, item_id, on_hand, reserved, updated_at) VALUES ($site, $item, $qty, 0, $now)
@@ -32,17 +41,33 @@ internal static class StockLedger
 
         var movementId = e.MovementId ?? Guid.NewGuid();
         await c.ExecAsync("""
-            INSERT INTO movements (id, occurred_at, kind, site_id, item_id, quantity, on_hand_after, reason, document_id, reference, user_name, note)
-            VALUES ($id, $now, $kind, $site, $item, $qty, $after, $reason, $doc, $ref, $user, $note)
+            INSERT INTO movements (id, occurred_at, kind, site_id, item_id, quantity, on_hand_after, reason, document_id, reference,
+                                   user_name, note, input_cost, sale_amount, operation_type)
+            VALUES ($id, $now, $kind, $site, $item, $qty, $after, $reason, $doc, $ref, $user, $note, $input, $sale, $op)
             """, tx, ("$id", movementId), ("$now", now), ("$kind", e.Kind), ("$site", e.SiteId), ("$item", e.ItemId),
             ("$qty", e.Quantity), ("$after", onHand), ("$reason", e.Reason), ("$doc", e.DocumentId), ("$ref", e.Reference),
-            ("$user", userName), ("$note", e.Note));
+            ("$user", userName), ("$note", e.Note), ("$input", e.Quantity > 0 ? Valuation.Store(e.UnitCost) : null),
+            ("$sale", Valuation.Store(e.SaleAmount)), ("$op", Valuation.OperationType(e.Kind, e.Reason)));
+        await Valuation.RevalueAsync(c, tx, e.SiteId, e.ItemId, now, movementId);
+        var valued = await ValuedAsync(c, tx, movementId, onHand);
 
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.StockAdjusted,
-            new StockAdjusted(e.SiteId, e.ItemId, e.Quantity, onHand, e.Reason, e.Reference),
+            new StockAdjusted(e.SiteId, e.ItemId, e.Quantity, onHand, e.Reason, e.Reference, valued.UnitCost, valued.TotalCost,
+                e.SaleAmount),
             subjectType: "item", subjectId: e.ItemId.ToString(), id: movementId);
-        return onHand;
+        return valued;
     }
+
+    private static async Task<Valued> ValuedAsync(SqliteConnection c, SqliteTransaction tx, Guid movementId, decimal onHand) =>
+        await c.FirstOrDefaultAsync("SELECT unit_cost, total_cost FROM movements WHERE id = $id",
+            r => new Valued(onHand, r.Dec("unit_cost"), r.Dec("total_cost")), tx, ("$id", movementId)) ?? new Valued(onHand, 0, 0);
+
+    /// <summary>
+    /// Costo de entrada de un movimiento replicado: las compras y las transferencias recibidas traen el suyo; lo demás
+    /// entra al promedio de este equipo.
+    /// </summary>
+    private static decimal? ReplicatedInputCost(StockAdjusted s) =>
+        s.QuantityDelta > 0 && s.Reason is "receipt" or "transfer" or "sale_void" or "return" ? s.UnitCost : null;
 
     /// <summary>
     /// Aplica un cambio hecho en otro equipo del WMS (llegó como <c>stock.adjusted</c>): suma el delta y deja el
@@ -53,9 +78,9 @@ internal static class StockLedger
     public static async Task ReplicateAsync(SqliteConnection c, SqliteTransaction tx, Guid movementId, DateTimeOffset occurredAt,
         StockAdjusted s, DateTimeOffset now)
     {
-        var local = await c.FirstOrDefaultAsync("SELECT site_id, item_id, quantity, document_id, reference FROM movements WHERE id = $id",
+        var local = await c.FirstOrDefaultAsync("SELECT site_id, item_id, quantity, document_id, reference, occurred_at FROM movements WHERE id = $id",
             r => new { Site = r.Guid("site_id"), Item = r.Guid("item_id"), Qty = r.Dec("quantity"), Doc = r.GuidOrNull("document_id"),
-                Ref = r.StrOrNull("reference") }, tx, ("$id", movementId));
+                Ref = r.StrOrNull("reference"), At = r.Time("occurred_at") }, tx, ("$id", movementId));
         if (local is not null)
         {
             if (local.Site == s.SiteId && local.Item == s.ItemId && local.Qty == s.QuantityDelta)
@@ -66,11 +91,17 @@ internal static class StockLedger
                 INSERT INTO stock (site_id, item_id, on_hand, reserved, updated_at) VALUES ($site, $item, $qty, 0, $now)
                 ON CONFLICT (site_id, item_id) DO UPDATE SET on_hand = on_hand + $qty, updated_at = $now
                 """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$qty", s.QuantityDelta), ("$now", now));
+            // Queda la versión del hub, con su fecha: así el orden del kardex es el mismo en todos los equipos.
             await c.ExecAsync("""
-                UPDATE movements SET site_id = $site, item_id = $item, quantity = $qty, on_hand_after = $after, note = $note
+                UPDATE movements SET site_id = $site, item_id = $item, quantity = $qty, on_hand_after = $after, note = $note,
+                                     occurred_at = $at, input_cost = $input, sale_amount = COALESCE($sale, sale_amount)
                 WHERE id = $id
                 """, tx, ("$id", movementId), ("$site", s.SiteId), ("$item", s.ItemId), ("$qty", s.QuantityDelta),
-                ("$after", await OnHandAsync(c, tx, s.SiteId, s.ItemId)), ("$note", "conflict"));
+                ("$after", await OnHandAsync(c, tx, s.SiteId, s.ItemId)), ("$note", "conflict"), ("$at", occurredAt),
+                ("$input", Valuation.Store(ReplicatedInputCost(s))), ("$sale", Valuation.Store(s.SaleAmount)));
+            await Valuation.RevalueAsync(c, tx, local.Site, local.Item, local.At < occurredAt ? local.At : occurredAt, Guid.Empty);
+            if (local.Site != s.SiteId || local.Item != s.ItemId)
+                await Valuation.RevalueAsync(c, tx, s.SiteId, s.ItemId, occurredAt, Guid.Empty);
             await SyncConflicts.RecordAsync(c, tx, now, SyncConflictKinds.Movement, movementId, local.Ref ?? s.Reference,
                 $"{local.Qty:0.##}→{s.QuantityDelta:0.##}");
             return;
@@ -81,11 +112,15 @@ internal static class StockLedger
             ON CONFLICT (site_id, item_id) DO UPDATE SET on_hand = on_hand + $qty, updated_at = MAX(updated_at, $at)
             """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$qty", s.QuantityDelta), ("$at", occurredAt));
         await c.ExecAsync("""
-            INSERT INTO movements (id, occurred_at, kind, site_id, item_id, quantity, on_hand_after, reason, document_id, reference, user_name, note)
-            VALUES ($id, $at, $kind, $site, $item, $qty, $after, $reason, NULL, $ref, NULL, 'Otro equipo')
+            INSERT INTO movements (id, occurred_at, kind, site_id, item_id, quantity, on_hand_after, reason, document_id, reference,
+                                   user_name, note, input_cost, sale_amount, operation_type)
+            VALUES ($id, $at, $kind, $site, $item, $qty, $after, $reason, NULL, $ref, NULL, 'Otro equipo', $input, $sale, $op)
             """, tx, ("$id", movementId), ("$at", occurredAt), ("$kind", KindFor(s.Reason, s.QuantityDelta)), ("$site", s.SiteId),
             ("$item", s.ItemId), ("$qty", s.QuantityDelta), ("$after", await OnHandAsync(c, tx, s.SiteId, s.ItemId)),
-            ("$reason", s.Reason), ("$ref", s.Reference));
+            ("$reason", s.Reason), ("$ref", s.Reference), ("$input", Valuation.Store(ReplicatedInputCost(s))),
+            ("$sale", Valuation.Store(s.SaleAmount)), ("$op", Valuation.OperationType(KindFor(s.Reason, s.QuantityDelta), s.Reason)));
+        // Si llegó atrasado (un equipo que estuvo sin conexión), se recalcula desde su fecha.
+        await Valuation.RevalueAsync(c, tx, s.SiteId, s.ItemId, occurredAt, movementId);
     }
 
     private static string KindFor(string? reason, decimal delta) => reason switch
