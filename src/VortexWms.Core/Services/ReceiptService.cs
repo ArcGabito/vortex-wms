@@ -83,7 +83,8 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
                     """, tx, ("$id", receiptId), ("$no", ++lineNo), ("$item", line.ItemId), ("$qty", line.Quantity), ("$cost", line.UnitPrice));
             }
 
-            await PostAsync(c, tx, now, receiptId, number, null, siteId, supplierId, merged.Select(l => new QuantityLine(l.ItemId, l.Quantity)).ToList());
+            await PostAsync(c, tx, now, receiptId, number, null, siteId, supplierId,
+                merged.Select(l => new QuantityLine(l.ItemId, l.Quantity, l.UnitPrice)).ToList());
             return number;
         }, ct);
     }
@@ -107,16 +108,16 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
             await InventoryService.RequireSiteAsync(c, tx, receipt.SiteId);
             await RequireSiteAccessAsync(c, tx, receipt.SiteId);
 
-            var lines = await c.QueryAsync("SELECT line_no, item_id FROM receipt_lines WHERE receipt_id = $id ORDER BY line_no",
-                r => (LineNo: r.Int("line_no"), ItemId: r.Guid("item_id")), tx, ("$id", receiptId));
+            var lines = await c.QueryAsync("SELECT line_no, item_id, unit_cost FROM receipt_lines WHERE receipt_id = $id ORDER BY line_no",
+                r => (LineNo: r.Int("line_no"), ItemId: r.Guid("item_id"), Cost: r.DecOrNull("unit_cost")), tx, ("$id", receiptId));
             var posted = new List<QuantityLine>();
-            foreach (var (lineNo, itemId) in lines)
+            foreach (var (lineNo, itemId, cost) in lines)
             {
                 var quantity = received.GetValueOrDefault(lineNo);
                 await c.ExecAsync("UPDATE receipt_lines SET received_qty = $qty WHERE receipt_id = $id AND line_no = $no", tx,
                     ("$qty", quantity), ("$id", receiptId), ("$no", lineNo));
                 if (quantity > 0)
-                    posted.Add(new QuantityLine(itemId, quantity));
+                    posted.Add(new QuantityLine(itemId, quantity, cost));
             }
 
             await c.ExecAsync("UPDATE receipts SET status = 'received', received_at = $now WHERE id = $id", tx, ("$id", receiptId), ("$now", now));
@@ -241,17 +242,32 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
     private async Task PostAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid receiptId, string number,
         Guid? purchaseOrderId, Guid siteId, Guid? supplierId, IReadOnlyList<QuantityLine> lines)
     {
-        foreach (var line in lines.Where(l => l.Quantity > 0))
+        // Un movimiento por artículo (la orden puede traer el mismo artículo en dos líneas), con su costo ponderado.
+        var perItem = lines.Where(l => l.Quantity > 0).GroupBy(l => l.ItemId).Select(g =>
         {
-            if (await StockLedger.TracksInventoryAsync(c, tx, line.ItemId))
-                await StockLedger.ApplyAsync(c, tx, now, Context.UserName,
-                    new StockLedger.Entry(siteId, line.ItemId, line.Quantity, MovementKinds.Receipt, "receipt", receiptId, number,
-                        // Mismo Id en todos los equipos: si dos reciben la misma orden de compra sin conexión, el stock sube
-                        // una sola vez (gana la versión que el hub recibió primero).
-                        MovementId: DeterministicId.From("receipt_line", receiptId, line.ItemId)));
+            var quantity = g.Sum(l => l.Quantity);
+            var costed = g.Where(l => l.UnitCost is not null).ToList();
+            decimal? cost = costed.Count == 0 ? null : costed.Sum(l => l.Quantity * l.UnitCost!.Value) / costed.Sum(l => l.Quantity);
+            return new QuantityLine(g.Key, quantity, cost is { } c0 ? Valuation.Unit(c0) : null);
+        }).ToList();
+
+        var posted = new List<QuantityLine>();
+        foreach (var line in perItem)
+        {
+            if (!await StockLedger.TracksInventoryAsync(c, tx, line.ItemId))
+            {
+                posted.Add(line);
+                continue;
+            }
+            var valued = await StockLedger.ApplyValuedAsync(c, tx, now, Context.UserName,
+                new StockLedger.Entry(siteId, line.ItemId, line.Quantity, MovementKinds.Receipt, "receipt", receiptId, number,
+                    // Mismo Id en todos los equipos: si dos reciben la misma orden de compra sin conexión, el stock sube
+                    // una sola vez (gana la versión que el hub recibió primero).
+                    MovementId: DeterministicId.From("receipt_line", receiptId, line.ItemId), UnitCost: line.UnitCost));
+            posted.Add(line with { UnitCost = valued.UnitCost, TotalCost = valued.TotalCost });
         }
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.GoodsReceived,
-            new GoodsReceived(receiptId, number, purchaseOrderId, siteId, supplierId, lines),
+            new GoodsReceived(receiptId, number, purchaseOrderId, siteId, supplierId, posted),
             subjectType: "receipt", subjectId: number, id: receiptId);
     }
 }

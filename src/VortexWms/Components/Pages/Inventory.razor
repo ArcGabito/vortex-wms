@@ -8,7 +8,10 @@
 {
     <div class="stat-strip">
         <StatTile Icon="boxes" Label="@(T("inventory.unidades"))" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="@(s.UnitsChangePct is null ? null : T("inventory.vs_hace_30_dias"))" />
-        <StatTile Icon="wallet" Label="@(T("inventory.valor"))" Value="@Fmt.MoneyCompact(s.StockValue, s.CurrencyCode)" Hint="@(T("inventory.precio_de_venta"))" />
+        @if (s.StockValue is { } stockValue)
+        {
+            <StatTile Icon="wallet" Label="@(T("inventory.valor"))" Value="@Fmt.MoneyCompact(stockValue, s.CurrencyCode)" Hint="@(T("inventory.a_costo"))" />
+        }
         <StatTile Icon="tag" Label="@(T("inventory.articulos"))" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, T("inventory.categoria"), T("inventory.categorias")))" />
         <StatTile Icon="alert" Label="@(T("inventory.stock_bajo"))" Value="@Fmt.Compact(s.LowStock)" Hint="@(T("inventory.bajo_su_minimo"))" />
         <StatTile Icon="package-x" Label="@(T("inventory.agotados"))" Value="@Fmt.Compact(s.OutOfStock)" Hint="@(T("inventory.sin_unidades"))" />
@@ -126,7 +129,20 @@
                                         }
                                     </div>
                                 </td>
-                                <td class="num strong">@Fmt.Money(row.Value, row.CurrencyCode)</td>
+                                <td class="num">
+                                    <div class="two-line" style="align-items:flex-end">
+                                        @if (row.CostValue is { } costValue)
+                                        {
+                                            <span class="strong">@Fmt.Money(costValue, row.CurrencyCode)</span>
+                                            <span class="t2">@T("inventory.costo_promedio", Fmt.Money(row.AvgCost ?? 0, row.CurrencyCode))</span>
+                                        }
+                                        else
+                                        {
+                                            <span class="strong">@Fmt.Money(row.PriceValue, row.CurrencyCode)</span>
+                                            <span class="t2">@T("inventory.precio_de_venta")</span>
+                                        }
+                                    </div>
+                                </td>
                                 <td><StatusPill Text="@text" Tone="@tone" /></td>
                                 <td class="actions-col">
                                     <KebabMenu>

@@ -40,6 +40,7 @@ public sealed class WmsWorkspace
         var db = new WmsDatabase(databasePath);
         await db.MigrateAsync(ct);
         var workspace = new WmsWorkspace(db, context, clock ?? TimeProvider.System);
+        await workspace.Inventory.ValueExistingMovementsAsync(ct);
         await workspace.SyncHandlers.PruneProcessedEventsAsync(ct);
         return workspace;
     }

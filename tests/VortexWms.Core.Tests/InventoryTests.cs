@@ -99,19 +99,19 @@ public sealed class InventoryTests : IAsyncLifetime
     [Fact]
     public async Task Panel_y_exportacion_reflejan_el_stock()
     {
-        await _t.Wms.Receipts.ReceiveDirectAsync(_t.Central, null, [new DocumentLine(_t.Coffee, 10), new DocumentLine(_t.Sugar, 2)]);
+        await _t.Wms.Receipts.ReceiveDirectAsync(_t.Central, null, [new DocumentLine(_t.Coffee, 10, 12m), new DocumentLine(_t.Sugar, 2, 3m)]);
         await _t.Wms.Inventory.UpdateStockSettingsAsync(_t.Central, _t.Sugar, "a-01-02", reorderPoint: 5);
 
         var summary = await _t.Wms.Inventory.GetDashboardAsync();
         Assert.Equal(12, summary.UnitsOnHand);
         Assert.Equal(1, summary.LowStock);
-        Assert.Equal(12 * 18.5m, summary.StockValue);
+        Assert.Equal(10 * 12m + 2 * 3m, summary.StockValue);   // a costo (fase 1)
 
         var low = await _t.Wms.Inventory.GetStockAsync(new StockQuery(Status: StockStatus.Low));
         Assert.Equal("A-01-02", Assert.Single(low.Items).Bin);
 
         var csv = await _t.Wms.Inventory.ExportStockCsvAsync(new StockQuery(Search: "café"));
-        Assert.Contains("CAFE-250,Café tostado 250 g,Abarrotes,ALM-01,,10,0,10,,unidad,18.5,PEN,185", csv);
+        Assert.Contains("CAFE-250,Café tostado 250 g,Abarrotes,ALM-01,,10,0,10,,unidad,18.5,PEN,185,12,120", csv);
     }
 
     [Fact]

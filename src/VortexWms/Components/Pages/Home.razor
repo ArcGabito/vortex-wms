@@ -75,12 +75,26 @@
                 </div>
             </div>
             <div class="card-body">
-                @if (_summary is { } v)
+                @if (_summary is { StockValue: { } stockValue } v)
                 {
                     <div class="list-row">
                         <div class="stat-icon" style="width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--accent-ink)"><Icon Name="wallet" Size="18" /></div>
-                        <div class="two-line"><span class="t2">@T("home.valor_del_inventario")</span><span class="t1" style="font-size:18px">@Fmt.Money(v.StockValue, v.CurrencyCode)</span></div>
+                        <div class="two-line"><span class="t2">@T("home.valor_del_inventario_a_costo")</span><span class="t1" style="font-size:18px">@Fmt.Money(stockValue, v.CurrencyCode)</span></div>
                     </div>
+                    @if (v.CostOfSales30d is { } cogs && v.Margin30d is { } margin)
+                    {
+                        <div class="list-row">
+                            <div class="stat-icon" style="width:40px;height:40px;border-radius:12px"><Icon Name="trend-down" Size="18" /></div>
+                            <div class="two-line">
+                                <span class="t2">@T("home.costo_de_lo_vendido_30_dias")</span>
+                                <span class="t1">@Fmt.Money(cogs, v.CurrencyCode)</span>
+                            </div>
+                            <div class="two-line" style="margin-left:auto;align-items:flex-end">
+                                <span class="t2">@T("home.margen_estimado")</span>
+                                <span class="t1 @(margin < 0 ? "warn-text" : "good-text")">@Fmt.Money(margin, v.CurrencyCode)</span>
+                            </div>
+                        </div>
+                    }
                 }
                 @if (_low.Count == 0)
                 {

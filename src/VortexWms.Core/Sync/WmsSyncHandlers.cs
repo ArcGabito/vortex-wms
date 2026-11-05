@@ -69,13 +69,14 @@ public sealed class WmsSyncHandlers(
         {
             if (sale.SiteId == Guid.Empty)
                 return "sin siteId";
+            var amounts = (sale.Lines ?? []).GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Sum(l => l.Total));
             foreach (var (itemId, quantity) in PerItem((sale.Lines ?? []).Select(l => (l.ItemId, l.Quantity))))
             {
                 if (!await StockLedger.TracksInventoryAsync(c, tx, itemId))
                     continue;
                 await StockLedger.ApplyAsync(c, tx, now, e.Source, new StockLedger.Entry(sale.SiteId, itemId, -quantity,
                     MovementKinds.Sale, "sale", sale.SaleId, sale.Number,
-                    MovementId: DeterministicId.From("sale", sale.SaleId, sale.SiteId, itemId)));
+                    MovementId: DeterministicId.From("sale", sale.SaleId, sale.SiteId, itemId), SaleAmount: amounts.GetValueOrDefault(itemId)));
             }
             return null;
         }, ct);
@@ -89,14 +90,17 @@ public sealed class WmsSyncHandlers(
             if (alreadyVoided > 0)
                 return "venta ya anulada";
             var sold = await c.QueryAsync("""
-                SELECT site_id, item_id, SUM(quantity) AS qty, MAX(reference) AS reference FROM movements
-                WHERE document_id = $id AND kind = 'sale' GROUP BY site_id, item_id
-                """, r => (Site: r.Guid("site_id"), Item: r.Guid("item_id"), Qty: r.Dec("qty"), Ref: r.StrOrNull("reference")),
+                SELECT site_id, item_id, SUM(quantity) AS qty, MAX(reference) AS reference, MAX(unit_cost) AS unit_cost,
+                       MAX(sale_amount) AS sale_amount
+                FROM movements WHERE document_id = $id AND kind = 'sale' GROUP BY site_id, item_id
+                """, r => (Site: r.Guid("site_id"), Item: r.Guid("item_id"), Qty: r.Dec("qty"), Ref: r.StrOrNull("reference"),
+                    Cost: r.DecOrNull("unit_cost"), Amount: r.DecOrNull("sale_amount")),
                 tx, ("$id", voided.SaleId));
+            // Vuelve al stock con el costo con que salió y anula su importe de venta.
             foreach (var m in sold.Where(m => m.Qty != 0))
                 await StockLedger.ApplyAsync(c, tx, now, e.Source, new StockLedger.Entry(m.Site, m.Item, -m.Qty,
                     MovementKinds.SaleVoid, "sale_void", voided.SaleId, voided.Number ?? m.Ref, voided.Reason,
-                    DeterministicId.From("sale_void", voided.SaleId, m.Site, m.Item)));
+                    DeterministicId.From("sale_void", voided.SaleId, m.Site, m.Item), UnitCost: m.Cost, SaleAmount: -m.Amount));
             return sold.Count == 0 ? "venta desconocida" : null;
         }, ct);
 
@@ -105,13 +109,19 @@ public sealed class WmsSyncHandlers(
         {
             if (ret.SiteId == Guid.Empty)
                 return "sin siteId";
+            var amounts = (ret.Lines ?? []).GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Sum(l => Math.Abs(l.Total)));
             foreach (var (itemId, quantity) in PerItem((ret.Lines ?? []).Select(l => (l.ItemId, Math.Abs(l.Quantity)))))
             {
                 if (!await StockLedger.TracksInventoryAsync(c, tx, itemId))
                     continue;
+                // Reingresa con el costo con que salió en la venta (si este equipo la tiene); si no, al promedio.
+                var soldAt = await c.ScalarAsync<string?>("SELECT unit_cost FROM movements WHERE id = $id", tx,
+                    ("$id", DeterministicId.From("sale", ret.SaleId, ret.SiteId, itemId)));
                 await StockLedger.ApplyAsync(c, tx, now, e.Source, new StockLedger.Entry(ret.SiteId, itemId, quantity,
                     MovementKinds.SaleReturn, "return", ret.ReturnId, e.SubjectId,
-                    MovementId: DeterministicId.From("sale_return", ret.ReturnId, ret.SiteId, itemId)));
+                    MovementId: DeterministicId.From("sale_return", ret.ReturnId, ret.SiteId, itemId),
+                    UnitCost: soldAt is null ? null : decimal.Parse(soldAt, System.Globalization.CultureInfo.InvariantCulture),
+                    SaleAmount: -amounts.GetValueOrDefault(itemId)));
             }
             return null;
         }, ct);

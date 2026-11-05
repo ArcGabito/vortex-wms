@@ -30,6 +30,14 @@
             </select>
         </div>
         <div class="field">
+            <label>@T("movements.desde")</label>
+            <input class="control" type="date" value="@_from?.ToString("yyyy-MM-dd")" @onchange="async e => { _from = ParseDate(e.Value); _page = 1; await ReloadAsync(); }" />
+        </div>
+        <div class="field">
+            <label>@T("movements.hasta")</label>
+            <input class="control" type="date" value="@_to?.ToString("yyyy-MM-dd")" @onchange="async e => { _to = ParseDate(e.Value); _page = 1; await ReloadAsync(); }" />
+        </div>
+        <div class="field">
             <label>@T("movements.tipo")</label>
             <select class="select" value="@_kind" @onchange="async e => { _kind = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
                 <option value="">@T("movements.todos")</option>
@@ -45,7 +53,7 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="arrows" Title="@(T("movements.sin_movimientos"))" Text="@(_search != "" || _site != "" || _kind != "" ? T("movements.nada_coincide_con_los_filtros") : T("movements.aun_no_hay_entradas_ni"))" />
+            <EmptyState Icon="arrows" Title="@(T("movements.sin_movimientos"))" Text="@(_search != "" || _site != "" || _kind != "" || _from is not null || _to is not null ? T("movements.nada_coincide_con_los_filtros") : T("movements.aun_no_hay_entradas_ni"))" />
         }
         else
         {
@@ -59,6 +67,12 @@
                             <th>@T("movements.sede")</th>
                             <th class="num">@T("movements.cantidad")</th>
                             <th class="num">@T("movements.saldo")</th>
+                            @if (_costs)
+                            {
+                                <th class="num">@T("movements.costo_unit")</th>
+                                <th class="num">@T("movements.costo_total")</th>
+                                <th class="num">@T("movements.saldo_valorizado")</th>
+                            }
                             <th>@T("movements.usuario")</th>
                         </tr>
                     </thead>
@@ -87,6 +101,12 @@
                                 <td><span class="muted">@m.SiteName</span></td>
                                 <td class="num"><span class="@(m.Quantity >= 0 ? "qty-pos" : "qty-neg")">@(m.Quantity > 0 ? "+" : "")@Fmt.Qty(m.Quantity)</span></td>
                                 <td class="num strong">@Fmt.Qty(m.OnHandAfter)</td>
+                                @if (_costs)
+                                {
+                                    <td class="num">@(m.UnitCost is { } unit ? Fmt.Money(unit, _currency) : "—")</td>
+                                    <td class="num">@(m.TotalCost is { } total ? Fmt.Money(total, _currency) : "—")</td>
+                                    <td class="num strong">@(m.ValueAfter is { } value ? Fmt.Money(value, _currency) : "—")</td>
+                                }
                                 <td>
                                     <div class="two-line">
                                         <span class="t1" style="font-weight:600">@(m.UserName ?? "—")</span>
@@ -137,12 +157,37 @@
     protected override async Task LoadAsync()
     {
         _sites = await Wms.Master.GetSitesAsync(mineOnly: true);
-        var query = new MovementQuery(_search, Guid.TryParse(_site, out var site) ? site : null, _kind == "" ? null : _kind, _page, PageSize);
+        _costs = Session.Can(WmsPermissions.ViewCosts);
+        _currency = (await Wms.Master.GetCompanyAsync())?.CurrencyCode ?? "PEN";
+        var query = new MovementQuery(_search, Guid.TryParse(_site, out var site) ? site : null, _kind == "" ? null : _kind, _page, PageSize,
+            From: _from is { } from ? CompanyMidnight(from) : null, To: _to is { } to ? CompanyMidnight(to.AddDays(1)) : null);
         _result = await Wms.Inventory.GetMovementsAsync(query);
         if (_result.Items.Count == 0 && _page > 1)
         {
             _page = _result.Pages;
             _result = await Wms.Inventory.GetMovementsAsync(query with { Page = _page });
+        }
+    }
+
+    private bool _costs;
+    private string _currency = "PEN";
+    private DateOnly? _from;
+    private DateOnly? _to;
+
+    private static DateOnly? ParseDate(object? value) => DateOnly.TryParse(value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var d) ? d : null;
+
+    /// <summary>Medianoche del día en la hora de la empresa (el kardex se filtra por días de la empresa).</summary>
+    private static DateTimeOffset CompanyMidnight(DateOnly day)
+    {
+        var local = day.ToDateTime(TimeOnly.MinValue);
+        try
+        {
+            var zone = Fmt.TimeZone is { } id ? TimeZoneInfo.FindSystemTimeZoneById(id) : TimeZoneInfo.Local;
+            return new DateTimeOffset(local, zone.GetUtcOffset(local));
+        }
+        catch (TimeZoneNotFoundException)
+        {
+            return new DateTimeOffset(local, TimeZoneInfo.Local.GetUtcOffset(local));
         }
     }
 

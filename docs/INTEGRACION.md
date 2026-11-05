@@ -66,7 +66,19 @@ cambio más reciente).
 | `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede | Id nuevo; `updatedAt` en los datos |
 
 `stock.adjusted` lleva el delta y la existencia resultante (`quantityDelta`, `quantityOnHand`), el motivo y la
-referencia del documento.
+referencia del documento. Desde la fase 1 también el costo con que se valorizó el movimiento (`unitCost`, `totalCost`,
+en la moneda de la empresa) y, en ventas y despachos, el importe de venta (`saleAmount`); las líneas de
+`goods.received` llevan `unitCost` y `totalCost`. Son campos aditivos.
+
+### Costo y kardex valorizado
+
+Costo promedio ponderado móvil por artículo y sede. Las compras (costo de la orden de compra o del ingreso directo),
+las transferencias recibidas (con el costo con que salieron del origen) y las anulaciones y devoluciones de ventas
+(con el costo con que salieron) recalculan el promedio; las salidas salen al promedio vigente. Cada movimiento guarda
+costo unitario, costo total, saldo valorizado y su tipo de operación de la Tabla 12 de SUNAT. El orden del kardex es
+por fecha y luego por Id: un movimiento atrasado que llega de otro equipo recalcula desde su fecha, así todos los
+equipos llegan al mismo kardex. Los montos se guardan como texto decimal exacto. Los costos solo los ven los roles con
+permiso `cost.view` (supervisor y administradores).
 
 ### Qué consume el WMS
 

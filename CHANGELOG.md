@@ -8,6 +8,18 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Fase 1: costo y kardex valorizado.** Costo promedio ponderado móvil por artículo y sede: las compras, las
+  transferencias recibidas y las anulaciones y devoluciones de ventas entran con su costo, y las salidas salen al
+  promedio. El kardex muestra costo unitario, costo total y saldo valorizado, con filtro por fechas; el inventario y
+  el panel muestran el valor a costo, el costo de lo vendido y el margen de los últimos 30 días (solo para quien tiene
+  permiso de ver costos). Un movimiento atrasado de otro equipo recalcula desde su fecha. El ingreso directo exige
+  el costo unitario. Cada movimiento guarda su tipo de operación de la Tabla 12 de SUNAT para el PLE.
+- `stock.adjusted` gana `unitCost`, `totalCost` y `saleAmount`; las líneas de `goods.received`, `unitCost` y
+  `totalCost` (aditivos).
+
+### Fixed
+- Una orden de compra o un pedido con el mismo artículo en dos líneas movía el stock de una sola línea (los
+  movimientos ahora se agrupan por artículo).
 - **Sedes por usuario:** si el administrador asigna sedes al usuario en el hub, el WMS solo le muestra y le deja operar
   esas sedes (stock, movimientos, pedidos, recepciones, panel); puede transferir hacia cualquier sede. Sin sedes
   asignadas, o para los administradores de la organización, todas.

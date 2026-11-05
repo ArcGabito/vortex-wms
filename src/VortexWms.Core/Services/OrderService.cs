@@ -171,7 +171,10 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             await RequireSiteAccessAsync(c, tx, from);
 
             var lines = await LinesAsync(c, tx, orderId);
-            foreach (var line in lines.Where(l => l.Tracked))
+            // Por artículo: un pedido puede traer el mismo artículo en dos líneas y cada artículo tiene un solo movimiento.
+            var perItem = lines.Where(l => l.Tracked).GroupBy(l => l.ItemId)
+                .Select(g => new Line(g.Key, g.Sum(l => l.Quantity), true, g.Sum(l => l.Quantity * l.UnitPrice))).ToList();
+            foreach (var line in perItem)
             {
                 var onHand = await StockLedger.OnHandAsync(c, tx, from, line.ItemId);
                 Require(onHand >= line.Quantity,
@@ -182,13 +185,14 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             // stock baja una sola vez. La sede no entra en el Id: si despacharon desde sedes distintas, gana la del hub.
             var shipmentId = DeterministicId.From("shipment", orderId);
             var shipmentNumber = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Shipment, Context.DeviceTag);
-            foreach (var line in lines.Where(l => l.Tracked))
+            foreach (var line in perItem)
             {
                 if (order.SiteId != Guid.Empty)
                     await StockLedger.ReserveAsync(c, tx, now, order.SiteId, line.ItemId, -line.Quantity);
+                // En perItem, UnitPrice lleva el importe total del artículo en el pedido.
                 await StockLedger.ApplyAsync(c, tx, now, Context.UserName, new StockLedger.Entry(from, line.ItemId, -line.Quantity,
                         MovementKinds.Shipment, "shipment", orderId, order.Number,
-                        MovementId: DeterministicId.From("shipment_line", orderId, line.ItemId)));
+                        MovementId: DeterministicId.From("shipment_line", orderId, line.ItemId), SaleAmount: line.UnitPrice));
             }
 
             await c.ExecAsync("""
@@ -279,13 +283,13 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         }
     }
 
-    private sealed record Line(Guid ItemId, decimal Quantity, bool Tracked);
+    private sealed record Line(Guid ItemId, decimal Quantity, bool Tracked, decimal UnitPrice);
 
     private static async Task<List<Line>> LinesAsync(SqliteConnection c, SqliteTransaction tx, Guid orderId) =>
         await c.QueryAsync("""
-            SELECT l.item_id, l.quantity, COALESCE(i.track_inventory, 1) AS tracked
+            SELECT l.item_id, l.quantity, COALESCE(i.track_inventory, 1) AS tracked, l.unit_price
             FROM order_lines l LEFT JOIN items i ON i.id = l.item_id WHERE l.order_id = $id ORDER BY l.line_no
-            """, r => new Line(r.Guid("item_id"), r.Dec("quantity"), r.Bool("tracked")), tx, ("$id", orderId));
+            """, r => new Line(r.Guid("item_id"), r.Dec("quantity"), r.Bool("tracked"), r.Dec("unit_price")), tx, ("$id", orderId));
 
     private static Task<string?> StatusAsync(SqliteConnection c, SqliteTransaction tx, Guid orderId) =>
         c.ScalarAsync<string?>("SELECT status FROM orders WHERE id = $id", tx, ("$id", orderId));

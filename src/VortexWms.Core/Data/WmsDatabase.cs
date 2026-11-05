@@ -142,5 +142,29 @@ internal static class Schema
         ALTER TABLE stock ADD COLUMN settings_updated_at TEXT;
         CREATE INDEX ix_processed_events_at ON processed_events (processed_at);
         """,
+        // 4: fase 1, kardex valorizado (costo promedio ponderado móvil por artículo y sede). Los montos van como texto
+        // decimal exacto. input_cost: costo de una entrada con costo conocido (NULL = al promedio vigente).
+        // operation_type: Tabla 12 de SUNAT, para el PLE de la fase 8. sale_amount: importe de venta, para el margen.
+        """
+        ALTER TABLE stock ADD COLUMN avg_cost TEXT;
+        ALTER TABLE movements ADD COLUMN input_cost TEXT;
+        ALTER TABLE movements ADD COLUMN unit_cost TEXT;
+        ALTER TABLE movements ADD COLUMN total_cost TEXT;
+        ALTER TABLE movements ADD COLUMN avg_cost_after TEXT;
+        ALTER TABLE movements ADD COLUMN value_after TEXT;
+        ALTER TABLE movements ADD COLUMN sale_amount TEXT;
+        ALTER TABLE movements ADD COLUMN operation_type TEXT;
+        CREATE INDEX ix_movements_valuation ON movements (site_id, item_id, occurred_at, id);
+        UPDATE movements SET input_cost = (
+            SELECT CAST(l.unit_cost AS TEXT) FROM receipt_lines l
+            WHERE l.receipt_id = movements.document_id AND l.item_id = movements.item_id AND l.unit_cost IS NOT NULL LIMIT 1)
+        WHERE kind = 'receipt';
+        UPDATE movements SET operation_type = CASE
+            WHEN kind IN ('sale', 'shipment') THEN '01' WHEN kind = 'receipt' THEN '02'
+            WHEN kind IN ('sale_void', 'sale_return') THEN '05'
+            WHEN kind IN ('transfer_in', 'transfer_out') THEN '11'
+            WHEN kind = 'adjustment' AND reason IN ('damage', 'loss') THEN '13'
+            WHEN kind = 'adjustment' THEN '28' ELSE '99' END;
+        """,
     ];
 }

@@ -95,6 +95,9 @@ lleguen al mismo resultado.
 **Terminado cuando:** una secuencia conocida de entradas y salidas da el promedio esperado; un movimiento atrasado
 deja el mismo kardex valorizado en dos equipos; el Panel muestra el valor a costo.
 
+**Estado (2026-11):** hecha. Decisiones 2 y 3 tomadas como se recomendaba (promedio ponderado móvil por artículo y
+sede; costos en texto decimal exacto). Pruebas en `CostingTests`.
+
 ## Fase 2: artículos de almacén · M
 
 **Objetivo:** recibir por caja, despachar por unidad y encontrar cualquier artículo escaneando.
