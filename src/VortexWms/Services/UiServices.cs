@@ -2,6 +2,8 @@ using System.Globalization;
 using System.Text;
 using VortexWms.Core.Domain;
 
+using static VortexWms.Services.Txt;
+
 namespace VortexWms.Services;
 
 public enum ToastKind
@@ -87,7 +89,7 @@ public static class Fmt
     public static string Compact(decimal value) => Math.Abs(value) switch
     {
         >= 1_000_000 => (value / 1_000_000).ToString("0.#", Culture) + " M",
-        >= 10_000 => (value / 1_000).ToString("0.#", Culture) + " mil",
+        >= 10_000 => (value / 1_000).ToString("0.#", Culture) + T("fmt.mil"),
         _ => Qty(Math.Round(value, 2)),
     };
 
@@ -109,9 +111,9 @@ public static class Fmt
     public static string Ago(DateTimeOffset value)
     {
         var span = DateTimeOffset.Now - value;
-        return span.TotalSeconds < 60 ? "hace un momento"
-            : span.TotalMinutes < 60 ? $"hace {(int)span.TotalMinutes} min"
-            : span.TotalHours < 24 ? $"hace {(int)span.TotalHours} h"
+        return span.TotalSeconds < 60 ? T("fmt.hace_un_momento")
+            : span.TotalMinutes < 60 ? T("fmt.hace_min", (int)span.TotalMinutes)
+            : span.TotalHours < 24 ? T("fmt.hace", (int)span.TotalHours)
             : Date(value);
     }
 
@@ -128,58 +130,58 @@ public static class Fmt
 
     public static string MovementKind(string kind) => kind switch
     {
-        MovementKinds.Receipt => "Recepción",
-        MovementKinds.Adjustment => "Ajuste",
-        MovementKinds.TransferOut => "Transferencia (salida)",
-        MovementKinds.TransferIn => "Transferencia (entrada)",
-        MovementKinds.Shipment => "Despacho",
-        MovementKinds.Sale => "Venta POS",
-        MovementKinds.SaleVoid => "Venta anulada",
-        MovementKinds.SaleReturn => "Devolución",
+        MovementKinds.Receipt => T("fmt.recepcion"),
+        MovementKinds.Adjustment => T("fmt.ajuste"),
+        MovementKinds.TransferOut => T("fmt.transferencia_salida"),
+        MovementKinds.TransferIn => T("fmt.transferencia_entrada"),
+        MovementKinds.Shipment => T("fmt.despacho"),
+        MovementKinds.Sale => T("fmt.venta_pos"),
+        MovementKinds.SaleVoid => T("fmt.venta_anulada"),
+        MovementKinds.SaleReturn => T("fmt.devolucion"),
         _ => kind,
     };
 
     public static string Reason(string? reason) => reason switch
     {
-        AdjustmentReasons.Count => "Conteo físico",
-        AdjustmentReasons.Damage => "Merma / daño",
-        AdjustmentReasons.Loss => "Pérdida / robo",
-        AdjustmentReasons.Found => "Sobrante encontrado",
-        AdjustmentReasons.Correction => "Corrección",
+        AdjustmentReasons.Count => T("fmt.conteo_fisico"),
+        AdjustmentReasons.Damage => T("fmt.merma_dano"),
+        AdjustmentReasons.Loss => T("fmt.perdida_robo"),
+        AdjustmentReasons.Found => T("fmt.sobrante_encontrado"),
+        AdjustmentReasons.Correction => T("fmt.correccion"),
         null => "",
         _ => reason,
     };
 
     public static string OrderStatus(string status) => status switch
     {
-        OrderStatuses.Pending => "Pendiente",
-        OrderStatuses.Picking => "En preparación",
-        OrderStatuses.Dispatched => "Despachado",
-        OrderStatuses.Cancelled => "Cancelado",
+        OrderStatuses.Pending => T("fmt.pendiente"),
+        OrderStatuses.Picking => T("fmt.en_preparacion"),
+        OrderStatuses.Dispatched => T("fmt.despachado"),
+        OrderStatuses.Cancelled => T("fmt.cancelado"),
         _ => status,
     };
 
     public static string ReceiptStatus(string status) => status switch
     {
-        ReceiptStatuses.Expected => "Por recibir",
-        ReceiptStatuses.Received => "Recibida",
-        ReceiptStatuses.Cancelled => "Anulada",
+        ReceiptStatuses.Expected => T("fmt.por_recibir"),
+        ReceiptStatuses.Received => T("fmt.recibida"),
+        ReceiptStatuses.Cancelled => T("fmt.anulada"),
         _ => status,
     };
 
     public static string AuditAction(string action) => action switch
     {
-        "stock.adjusted" => "Ajuste de stock",
-        "document.cancelled" => "Pedido cancelado",
-        "document.voided" => "Recepción anulada",
+        "stock.adjusted" => T("fmt.ajuste_de_stock"),
+        "document.cancelled" => T("fmt.pedido_cancelado"),
+        "document.voided" => T("fmt.recepcion_anulada"),
         _ => action,
     };
 
     public static string SiteKind(string kind) => kind switch
     {
-        "Warehouse" => "Almacén",
-        "Store" => "Tienda",
-        "Office" => "Oficina",
-        _ => "Otro",
+        "Warehouse" => T("fmt.almacen"),
+        "Store" => T("fmt.tienda"),
+        "Office" => T("fmt.oficina"),
+        _ => T("fmt.otro"),
     };
 }

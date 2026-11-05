@@ -2,32 +2,32 @@
 @inherits WmsPage
 @inject FileExporter Exporter
 
-<SectionContent SectionName="page-title">Inventario</SectionContent>
+<SectionContent SectionName="page-title">@T("inventory.inventario")</SectionContent>
 
 @if (_summary is { } s)
 {
     <div class="stat-strip">
-        <StatTile Icon="boxes" Label="Unidades" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="@(s.UnitsChangePct is null ? null : "vs. hace 30 días")" />
-        <StatTile Icon="wallet" Label="Valor" Value="@Fmt.MoneyCompact(s.StockValue, s.CurrencyCode)" Hint="a precio de venta" />
-        <StatTile Icon="tag" Label="Artículos" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, "categoría", "categorías"))" />
-        <StatTile Icon="alert" Label="Stock bajo" Value="@Fmt.Compact(s.LowStock)" Hint="bajo su mínimo" />
-        <StatTile Icon="package-x" Label="Agotados" Value="@Fmt.Compact(s.OutOfStock)" Hint="sin unidades" />
+        <StatTile Icon="boxes" Label="@(T("inventory.unidades"))" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="@(s.UnitsChangePct is null ? null : T("inventory.vs_hace_30_dias"))" />
+        <StatTile Icon="wallet" Label="@(T("inventory.valor"))" Value="@Fmt.MoneyCompact(s.StockValue, s.CurrencyCode)" Hint="@(T("inventory.precio_de_venta"))" />
+        <StatTile Icon="tag" Label="@(T("inventory.articulos"))" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, T("inventory.categoria"), T("inventory.categorias")))" />
+        <StatTile Icon="alert" Label="@(T("inventory.stock_bajo"))" Value="@Fmt.Compact(s.LowStock)" Hint="@(T("inventory.bajo_su_minimo"))" />
+        <StatTile Icon="package-x" Label="@(T("inventory.agotados"))" Value="@Fmt.Compact(s.OutOfStock)" Hint="@(T("inventory.sin_unidades"))" />
     </div>
 }
 
 <div class="page">
     <div class="filters">
         <div class="field search">
-            <label>Buscar</label>
+            <label>@T("inventory.buscar")</label>
             <div class="input-icon">
                 <Icon Name="search" Size="16" />
-                <input class="control" placeholder="Artículo, SKU…" value="@_search" @oninput="OnSearchInput" />
+                <input class="control" placeholder="@(T("inventory.articulo_sku"))" value="@_search" @oninput="OnSearchInput" />
             </div>
         </div>
         <div class="field">
-            <label>Sede</label>
+            <label>@T("inventory.sede")</label>
             <select class="select" value="@_site" @onchange="e => ApplyFilterAsync(() => _site = e.Value?.ToString() ?? string.Empty)">
-                <option value="">Todas</option>
+                <option value="">@T("inventory.todas")</option>
                 @foreach (var site in _sites)
                 {
                     <option value="@site.Id">@site.Name</option>
@@ -35,9 +35,9 @@
             </select>
         </div>
         <div class="field">
-            <label>Categoría</label>
+            <label>@T("inventory.categoria_2")</label>
             <select class="select" value="@_category" @onchange="e => ApplyFilterAsync(() => _category = e.Value?.ToString() ?? string.Empty)">
-                <option value="">Todas</option>
+                <option value="">@T("inventory.todas")</option>
                 @foreach (var category in _categories)
                 {
                     <option value="@category">@category</option>
@@ -45,22 +45,22 @@
             </select>
         </div>
         <div class="field">
-            <label>Estado</label>
+            <label>@T("inventory.estado")</label>
             <select class="select" value="@_status" @onchange="e => ApplyFilterAsync(() => _status = e.Value?.ToString() ?? string.Empty)">
-                <option value="">Todos</option>
-                <option value="InStock">En stock</option>
-                <option value="Low">Stock bajo</option>
-                <option value="OutOfStock">Agotado</option>
+                <option value="">@T("inventory.todos")</option>
+                <option value="InStock">@T("inventory.en_stock")</option>
+                <option value="Low">@T("inventory.stock_bajo")</option>
+                <option value="OutOfStock">@T("inventory.agotado")</option>
             </select>
         </div>
         <div class="actions">
             @if (_selected.Count > 0)
             {
-                <button class="btn btn-outline" @onclick="TransferSelected"><Icon Name="arrows" Size="18" />Transferir (@_selected.Count)</button>
+                <button class="btn btn-outline" @onclick="TransferSelected"><Icon Name="arrows" Size="18" />@T("inventory.transferir", _selected.Count)</button>
             }
-            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.Adjust))" @onclick="() => OpenAdjust(null)"><Icon Name="plus" Size="18" />Ajustar stock</button>
-            <button class="btn btn-dark icon-btn" disabled="@(!Session.Can(WmsPermissions.Transfer))" title="Transferir entre sedes" aria-label="Transferir entre sedes" @onclick="() => OpenTransfer(null)"><Icon Name="arrows" Size="18" /></button>
-            <button class="btn btn-dark icon-btn" title="Exportar CSV" aria-label="Exportar CSV" @onclick="ExportAsync"><Icon Name="download" Size="18" /></button>
+            <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.Adjust))" @onclick="() => OpenAdjust(null)"><Icon Name="plus" Size="18" />@T("inventory.ajustar_stock")</button>
+            <button class="btn btn-dark icon-btn" disabled="@(!Session.Can(WmsPermissions.Transfer))" title="@(T("inventory.transferir_entre_sedes"))" aria-label="@(T("inventory.transferir_entre_sedes"))" @onclick="() => OpenTransfer(null)"><Icon Name="arrows" Size="18" /></button>
+            <button class="btn btn-dark icon-btn" title="@(T("inventory.exportar_csv"))" aria-label="@(T("inventory.exportar_csv"))" @onclick="ExportAsync"><Icon Name="download" Size="18" /></button>
         </div>
     </div>
 
@@ -68,11 +68,11 @@
     {
         @if (page.Total == 0 && !Loading)
         {
-            <EmptyState Icon="boxes" Title="@(HasFilters ? "Nada coincide con los filtros" : "Aún no hay stock registrado")"
-                        Text="@(HasFilters ? "Prueba con otra búsqueda o quita filtros." : "El stock se crea al recibir mercadería o al hacer un ajuste.")">
+            <EmptyState Icon="boxes" Title="@(HasFilters ? T("inventory.nada_coincide_con_los_filtros") : T("inventory.aun_no_hay_stock_registrado"))"
+                        Text="@(HasFilters ? T("inventory.prueba_con_otra_busqueda_quita") : T("inventory.el_stock_se_crea_al"))">
                 @if (!HasFilters)
                 {
-                    <a class="btn btn-dark" href="recepciones?nueva=1"><Icon Name="plus" Size="18" />Registrar una recepción</a>
+                    <a class="btn btn-dark" href="recepciones?nueva=1"><Icon Name="plus" Size="18" />@T("inventory.registrar_una_recepcion")</a>
                 }
             </EmptyState>
         }
@@ -82,15 +82,15 @@
                 <table class="data">
                     <thead>
                         <tr>
-                            <th class="check-col"><input type="checkbox" checked="@AllSelected" @onchange="ToggleAll" aria-label="Seleccionar todo" /></th>
-                            <th>Artículo</th>
-                            <th>Sede</th>
-                            <th>Ubicación</th>
-                            <th class="num">Stock</th>
-                            <th class="num">Disponible</th>
-                            <th class="num">Valor</th>
-                            <th>Estado</th>
-                            <th class="actions-col">Acciones</th>
+                            <th class="check-col"><input type="checkbox" checked="@AllSelected" @onchange="ToggleAll" aria-label="@(T("inventory.seleccionar_todo"))" /></th>
+                            <th>@T("inventory.articulo")</th>
+                            <th>@T("inventory.sede")</th>
+                            <th>@T("inventory.ubicacion")</th>
+                            <th class="num">@T("inventory.stock")</th>
+                            <th class="num">@T("inventory.disponible")</th>
+                            <th class="num">@T("inventory.valor")</th>
+                            <th>@T("inventory.estado")</th>
+                            <th class="actions-col">@T("inventory.acciones")</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -99,7 +99,7 @@
                             var key = (row.SiteId, row.ItemId);
                             var (text, tone) = StatusPill.ForStock(row.Status);
                             <tr @key="key">
-                                <td class="check-col"><input type="checkbox" checked="@_selected.ContainsKey(key)" @onchange="() => Toggle(row)" aria-label="Seleccionar @row.ItemName" /></td>
+                                <td class="check-col"><input type="checkbox" checked="@_selected.ContainsKey(key)" @onchange="() => Toggle(row)" aria-label="@(T("inventory.seleccionar", row.ItemName))" /></td>
                                 <td>
                                     <div class="cell-main">
                                         <Avatar Text="@row.ItemName" Size="34" />
@@ -110,7 +110,7 @@
                                     <div class="two-line"><span class="t1">@row.SiteName</span><span class="t2">@row.SiteCode</span></div>
                                 </td>
                                 <td>
-                                    <div class="two-line"><span class="t1">@(row.Bin ?? "—")</span><span class="t2">@(row.Category ?? "Sin categoría")</span></div>
+                                    <div class="two-line"><span class="t1">@(row.Bin ?? "—")</span><span class="t2">@(row.Category ?? T("inventory.sin_categoria"))</span></div>
                                 </td>
                                 <td class="num strong">@Fmt.Qty(row.OnHand) <span class="faint" style="font-weight:500">@row.Unit</span></td>
                                 <td class="num">
@@ -118,11 +118,11 @@
                                         <span class="@(row.Status == StockStatus.InStock ? "" : "warn-text")">@Fmt.Qty(row.Available)</span>
                                         @if (row.Reserved > 0)
                                         {
-                                            <span class="t2">@Fmt.Qty(row.Reserved) reservado</span>
+                                            <span class="t2">@T("inventory.reservado", Fmt.Qty(row.Reserved))</span>
                                         }
                                         else if (row.ReorderPoint is { } min)
                                         {
-                                            <span class="t2">mín. @Fmt.Qty(min)</span>
+                                            <span class="t2">@T("inventory.min", Fmt.Qty(min))</span>
                                         }
                                     </div>
                                 </td>
@@ -130,11 +130,11 @@
                                 <td><StatusPill Text="@text" Tone="@tone" /></td>
                                 <td class="actions-col">
                                     <KebabMenu>
-                                        <button disabled="@(!Session.Can(WmsPermissions.Adjust))" @onclick="() => OpenAdjust(row)"><Icon Name="edit" Size="18" />Ajustar stock</button>
-                                        <button disabled="@(!Session.Can(WmsPermissions.Transfer))" @onclick="() => OpenTransfer([row])"><Icon Name="arrows" Size="18" />Transferir</button>
-                                        <button disabled="@(!Session.Can(WmsPermissions.StockSettings))" @onclick="() => OpenSettings(row)"><Icon Name="pin" Size="18" />Ubicación y mínimo</button>
+                                        <button disabled="@(!Session.Can(WmsPermissions.Adjust))" @onclick="() => OpenAdjust(row)"><Icon Name="edit" Size="18" />@T("inventory.ajustar_stock")</button>
+                                        <button disabled="@(!Session.Can(WmsPermissions.Transfer))" @onclick="() => OpenTransfer([row])"><Icon Name="arrows" Size="18" />@T("inventory.transferir_2")</button>
+                                        <button disabled="@(!Session.Can(WmsPermissions.StockSettings))" @onclick="() => OpenSettings(row)"><Icon Name="pin" Size="18" />@T("inventory.ubicacion_minimo")</button>
                                         <hr />
-                                        <a href="@($"movimientos?q={Uri.EscapeDataString(row.Sku)}")"><Icon Name="list" Size="18" />Ver kardex</a>
+                                        <a href="@($"movimientos?q={Uri.EscapeDataString(row.Sku)}")"><Icon Name="list" Size="18" />@T("inventory.ver_kardex")</a>
                                     </KebabMenu>
                                 </td>
                             </tr>
@@ -142,20 +142,20 @@
                     </tbody>
                 </table>
             </div>
-            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="registros de stock" OnPage="GoToPageAsync" />
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("inventory.registros_de_stock"))" OnPage="GoToPageAsync" />
         }
     }
 </div>
 
 @if (_adjust is { } a)
 {
-    <Modal Title="Ajustar stock" Subtitle="Conteo físico, mermas o correcciones. Queda en el kardex y se informa a la suite." Error="@_error" OnClose="CloseModals">
+    <Modal Title="@(T("inventory.ajustar_stock"))" Subtitle="@(T("inventory.conteo_fisico_mermas_correcciones_queda"))" Error="@_error" OnClose="CloseModals">
         <ChildContent>
             <div class="form-row">
                 <div class="field">
-                    <label>Sede</label>
+                    <label>@T("inventory.sede")</label>
                     <select class="select" value="@a.SiteId" @onchange="async e => { a.SiteId = ParseGuid(e.Value); await RefreshCurrentAsync(); }">
-                        <option value="">Elige la sede</option>
+                        <option value="">@T("inventory.elige_la_sede")</option>
                         @foreach (var site in _sites)
                         {
                             <option value="@site.Id">@site.Name</option>
@@ -163,7 +163,7 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Motivo</label>
+                    <label>@T("inventory.motivo")</label>
                     <select class="select" @bind="a.Reason">
                         @foreach (var reason in AdjustmentReasons.All)
                         {
@@ -173,15 +173,15 @@
                 </div>
             </div>
             <div class="field">
-                <label>Artículo</label>
+                <label>@T("inventory.articulo")</label>
                 @if (a.Item is { } item)
                 {
                     <div class="line" style="grid-template-columns:1fr auto">
                         <div class="cell-main">
                             <Avatar Text="@item.Name" Size="34" />
-                            <div class="two-line"><span class="t1">@item.Name</span><span class="t2">#@item.Sku · stock actual @(a.Current is { } cur ? Fmt.Qty(cur) : "—") @item.Unit</span></div>
+                            <div class="two-line"><span class="t1">@item.Name</span><span class="t2">@T("inventory.stock_actual", item.Sku, (a.Current is { } cur ? Fmt.Qty(cur) : "—"), item.Unit)</span></div>
                         </div>
-                        <button class="btn btn-sm" @onclick="() => { a.Item = null; a.Current = null; }">Cambiar</button>
+                        <button class="btn btn-sm" @onclick="() => { a.Item = null; a.Current = null; }">@T("inventory.cambiar")</button>
                     </div>
                 }
                 else
@@ -190,40 +190,40 @@
                 }
             </div>
             <div class="segmented">
-                <button class="@(a.IsCount ? "on" : "")" @onclick="() => a.IsCount = true">Conteo físico</button>
-                <button class="@(!a.IsCount ? "on" : "")" @onclick="() => a.IsCount = false">Entrada / salida</button>
+                <button class="@(a.IsCount ? "on" : "")" @onclick="() => a.IsCount = true">@T("inventory.conteo_fisico")</button>
+                <button class="@(!a.IsCount ? "on" : "")" @onclick="() => a.IsCount = false">@T("inventory.entrada_salida")</button>
             </div>
             <div class="form-row">
                 <div class="field">
-                    <label>@(a.IsCount ? "Cantidad contada" : "Diferencia (+ entra, − sale)")</label>
+                    <label>@(a.IsCount ? T("inventory.cantidad_contada") : T("inventory.diferencia_entra_sale"))</label>
                     <input class="control" type="number" step="any" @bind="a.Quantity" @bind:event="oninput" />
                 </div>
                 <div class="field">
-                    <label>Resultado</label>
+                    <label>@T("inventory.resultado")</label>
                     <input class="control" disabled value="@(Preview(a) is { } p ? $"{Fmt.Qty(p)} {a.Item?.Unit}" : "—")" />
                 </div>
             </div>
             <div class="field">
-                <label>Nota (opcional)</label>
-                <input class="control" placeholder="Ej. conteo cíclico pasillo A" @bind="a.Note" />
+                <label>@T("inventory.nota_opcional")</label>
+                <input class="control" placeholder="@(T("inventory.ej_conteo_ciclico_pasillo"))" @bind="a.Note" />
             </div>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="CloseModals">Cancelar</button>
-            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAdjustAsync">Guardar ajuste</button>
+            <button class="btn" @onclick="CloseModals">@T("inventory.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveAdjustAsync">@T("inventory.guardar_ajuste")</button>
         </Footer>
     </Modal>
 }
 
 @if (_transfer is { } t)
 {
-    <Modal Title="Transferir entre sedes" Subtitle="Mueve mercadería de un almacén o tienda a otro." Size="lg" Error="@_error" OnClose="CloseModals">
+    <Modal Title="@(T("inventory.transferir_entre_sedes"))" Subtitle="@(T("inventory.mueve_mercaderia_de_un_almacen"))" Size="lg" Error="@_error" OnClose="CloseModals">
         <ChildContent>
             <div class="form-row">
                 <div class="field">
-                    <label>Origen</label>
+                    <label>@T("inventory.origen")</label>
                     <select class="select" value="@t.FromId" @onchange="async e => { t.FromId = ParseGuid(e.Value); if (_lines is not null) await _lines.RefreshAvailabilityAsync(); }">
-                        <option value="">Elige el origen</option>
+                        <option value="">@T("inventory.elige_el_origen")</option>
                         @foreach (var site in _sites)
                         {
                             <option value="@site.Id">@site.Name</option>
@@ -231,9 +231,9 @@
                     </select>
                 </div>
                 <div class="field">
-                    <label>Destino</label>
+                    <label>@T("inventory.destino")</label>
                     <select class="select" value="@t.ToId" @onchange="e => t.ToId = ParseGuid(e.Value)">
-                        <option value="">Elige el destino</option>
+                        <option value="">@T("inventory.elige_el_destino")</option>
                         @foreach (var site in _sites.Where(x => x.Id != t.FromId))
                         {
                             <option value="@site.Id">@site.Name</option>
@@ -243,36 +243,36 @@
             </div>
             <LineEditor Changed="StateHasChanged" @ref="_lines" Lines="t.Lines" AvailableFor="AvailableAtOriginAsync" />
             <div class="field">
-                <label>Nota (opcional)</label>
-                <input class="control" placeholder="Ej. reposición semanal" @bind="t.Note" />
+                <label>@T("inventory.nota_opcional")</label>
+                <input class="control" placeholder="@(T("inventory.ej_reposicion_semanal"))" @bind="t.Note" />
             </div>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="CloseModals">Cancelar</button>
-            <button class="btn btn-dark" disabled="@(_busy || t.Lines.Count == 0)" @onclick="SaveTransferAsync">Transferir</button>
+            <button class="btn" @onclick="CloseModals">@T("inventory.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || t.Lines.Count == 0)" @onclick="SaveTransferAsync">@T("inventory.transferir_2")</button>
         </Footer>
     </Modal>
 }
 
 @if (_settings is { } st)
 {
-    <Modal Title="Ubicación y stock mínimo" Subtitle="@($"{st.Row.ItemName} en {st.Row.SiteName}")" Error="@_error" OnClose="CloseModals">
+    <Modal Title="@(T("inventory.ubicacion_stock_minimo"))" Subtitle="@(T("inventory.en", st.Row.ItemName, st.Row.SiteName))" Error="@_error" OnClose="CloseModals">
         <ChildContent>
             <div class="form-row">
                 <div class="field">
-                    <label>Ubicación (pasillo-estante-nivel)</label>
+                    <label>@T("inventory.ubicacion_pasillo_estante_nivel")</label>
                     <input class="control" placeholder="A-01-02" @bind="st.Bin" />
                 </div>
                 <div class="field">
-                    <label>Stock mínimo</label>
-                    <input class="control" type="number" min="0" step="any" placeholder="Sin mínimo" @bind="st.ReorderPoint" />
+                    <label>@T("inventory.stock_minimo")</label>
+                    <input class="control" type="number" min="0" step="any" placeholder="@(T("inventory.sin_minimo"))" @bind="st.ReorderPoint" />
                 </div>
             </div>
-            <div class="alert info"><Icon Name="bell" Size="18" /><span>Cuando el disponible llegue al mínimo, el artículo aparecerá como “Stock bajo”.</span></div>
+            <div class="alert info"><Icon Name="bell" Size="18" /><span>@T("inventory.cuando_el_disponible_llegue_al")</span></div>
         </ChildContent>
         <Footer>
-            <button class="btn" @onclick="CloseModals">Cancelar</button>
-            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveSettingsAsync">Guardar</button>
+            <button class="btn" @onclick="CloseModals">@T("inventory.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SaveSettingsAsync">@T("inventory.guardar")</button>
         </Footer>
     </Modal>
 }
@@ -423,7 +423,7 @@
         var rows = _selected.Values.ToList();
         if (rows.Select(r => r.SiteId).Distinct().Count() > 1)
         {
-            Toasts.Error("Para transferir juntos, los artículos seleccionados deben estar en la misma sede.");
+            Toasts.Error(T("inventory.para_transferir_juntos_los_articulos"));
             return;
         }
         OpenTransfer(rows);
@@ -467,12 +467,12 @@
             return;
         if (a.SiteId is not { } site || a.Item is not { } item || a.Quantity is not { } quantity)
         {
-            _error = "Elige la sede, el artículo y la cantidad.";
+            _error = T("inventory.elige_la_sede_el_articulo");
             return;
         }
         _busy = true;
         _error = await TryAsync(() => Wms.Inventory.AdjustAsync(site, item.Id, a.IsCount ? quantity : null, a.IsCount ? null : quantity,
-            a.Reason, a.Note), $"Stock de {item.Name} actualizado.");
+            a.Reason, a.Note), T("inventory.stock_de_actualizado", item.Name));
         _busy = false;
         if (_error is null)
             CloseModals();
@@ -506,7 +506,7 @@
             return;
         if (t.FromId is not { } from || t.ToId is not { } to)
         {
-            _error = "Elige el origen y el destino.";
+            _error = T("inventory.elige_el_origen_el_destino");
             return;
         }
         _busy = true;
@@ -515,7 +515,7 @@
         _busy = false;
         if (_error is null)
         {
-            Toasts.Success($"Transferencia {number} registrada.");
+            Toasts.Success(T("inventory.transferencia_registrada", number));
             _selected.Clear();
             CloseModals();
         }
@@ -534,7 +534,7 @@
         if (_settings is not { } st)
             return;
         _busy = true;
-        _error = await TryAsync(() => Wms.Inventory.UpdateStockSettingsAsync(st.Row.SiteId, st.Row.ItemId, st.Bin, st.ReorderPoint), "Ubicación y mínimo guardados.");
+        _error = await TryAsync(() => Wms.Inventory.UpdateStockSettingsAsync(st.Row.SiteId, st.Row.ItemId, st.Bin, st.ReorderPoint), T("inventory.ubicacion_minimo_guardados"));
         _busy = false;
         if (_error is null)
             CloseModals();
@@ -548,11 +548,11 @@
         {
             var csv = await Wms.Inventory.ExportStockCsvAsync(CurrentQuery());
             var path = await Exporter.ExportAsync($"inventario-{DateTime.Now:yyyyMMdd-HHmm}.csv", csv);
-            Toasts.Success($"Exportado: {Path.GetFileName(path)}");
+            Toasts.Success(T("inventory.exportado", Path.GetFileName(path)));
         }
         catch (Exception ex)
         {
-            Toasts.Error($"No se pudo exportar: {ex.Message}");
+            Toasts.Error(T("inventory.no_se_pudo_exportar", ex.Message));
         }
     }
 

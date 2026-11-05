@@ -3,6 +3,8 @@ using VortexWms.Core;
 using VortexWms.Core.Domain;
 using VortexWms.Services;
 
+using static VortexWms.Services.Txt;
+
 namespace VortexWms.Components;
 
 /// <summary>
@@ -37,7 +39,7 @@ public abstract class WmsPage : ComponentBase, IDisposable
         }
         catch (Exception ex)
         {
-            Toasts.Error($"No se pudieron cargar los datos: {ex.Message}");
+            Toasts.Error(T("page.no_se_pudieron_cargar_los", ex.Message));
         }
         finally
         {
@@ -67,7 +69,7 @@ public abstract class WmsPage : ComponentBase, IDisposable
         }
         catch (Exception ex)
         {
-            return $"No se pudo completar la operación: {ex.Message}";
+            return T("page.no_se_pudo_completar_la", ex.Message);
         }
         if (success is not null)
             Toasts.Success(success);

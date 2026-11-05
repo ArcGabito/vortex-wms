@@ -1,28 +1,28 @@
 @page "/"
 @inherits WmsPage
 
-<SectionContent SectionName="page-title">Panel</SectionContent>
+<SectionContent SectionName="page-title">@T("home.panel")</SectionContent>
 
 @if (_summary is { } s)
 {
     <div class="stat-strip">
-        <StatTile Icon="tag" Label="Artículos" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, "categoría", "categorías"))" />
-        <StatTile Icon="boxes" Label="Unidades" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="@(s.UnitsChangePct is null ? null : "vs. hace 30 días")" />
-        <StatTile Icon="clipboard" Label="Por despachar" Value="@Fmt.Compact(s.OrdersOpen)" Hint="@($"{s.OrdersPicking} en preparación")" />
-        <StatTile Icon="truck" Label="Despachados" Value="@Fmt.Compact(s.Dispatched30d)" Delta="s.DispatchedChangePct" Hint="últimos 30 días" />
-        <StatTile Icon="alert" Label="Stock bajo" Value="@Fmt.Compact(s.LowStock)" Hint="@($"{s.OutOfStock} agotados")" />
+        <StatTile Icon="tag" Label="@(T("home.articulos"))" Value="@Fmt.Compact(s.ActiveItems)" Hint="@(Fmt.Count(s.Categories, T("home.categoria"), T("home.categorias")))" />
+        <StatTile Icon="boxes" Label="@(T("home.unidades"))" Value="@Fmt.Compact(s.UnitsOnHand)" Delta="s.UnitsChangePct" Hint="@(s.UnitsChangePct is null ? null : T("home.vs_hace_30_dias"))" />
+        <StatTile Icon="clipboard" Label="@(T("home.por_despachar"))" Value="@Fmt.Compact(s.OrdersOpen)" Hint="@(T("home.en_preparacion", s.OrdersPicking))" />
+        <StatTile Icon="truck" Label="@(T("home.despachados"))" Value="@Fmt.Compact(s.Dispatched30d)" Delta="s.DispatchedChangePct" Hint="@(T("home.ultimos_30_dias"))" />
+        <StatTile Icon="alert" Label="@(T("home.stock_bajo"))" Value="@Fmt.Compact(s.LowStock)" Hint="@(T("home.agotados", s.OutOfStock))" />
     </div>
 }
 
 <div class="page">
     <div class="page-head">
         <div>
-            <h2>Hola, @FirstName</h2>
-            <p>@Session.Session?.Access.OrganizationName · Así está tu almacén hoy.</p>
+            <h2>@T("home.hola", FirstName)</h2>
+            <p>@T("home.asi_esta_tu_almacen_hoy", (Session.Session?.Access.OrganizationName))</p>
         </div>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
-            <a class="btn btn-outline" href="inventario?ajustar=1"><Icon Name="edit" Size="18" />Ajustar stock</a>
-            <a class="btn btn-dark" href="recepciones?nueva=1"><Icon Name="plus" Size="18" />Nueva recepción</a>
+            <a class="btn btn-outline" href="inventario?ajustar=1"><Icon Name="edit" Size="18" />@T("home.ajustar_stock")</a>
+            <a class="btn btn-dark" href="recepciones?nueva=1"><Icon Name="plus" Size="18" />@T("home.nueva_recepcion")</a>
         </div>
     </div>
 
@@ -30,22 +30,22 @@
         <div class="card">
             <div class="card-head">
                 <div>
-                    <h3>Movimientos recientes</h3>
-                    <div class="sub">Lo último que entró y salió del almacén</div>
+                    <h3>@T("home.movimientos_recientes")</h3>
+                    <div class="sub">@T("home.lo_ultimo_que_entro_salio")</div>
                 </div>
-                <a class="btn btn-sm" href="movimientos">Ver kardex</a>
+                <a class="btn btn-sm" href="movimientos">@T("home.ver_kardex")</a>
             </div>
             <div class="card-body" style="padding-top:12px">
                 @if (_movements.Count == 0)
                 {
-                    <EmptyState Icon="arrows" Title="Aún no hay movimientos" Text="Registra una recepción para empezar a llevar el stock." />
+                    <EmptyState Icon="arrows" Title="@(T("home.aun_no_hay_movimientos"))" Text="@(T("home.registra_una_recepcion_para_empezar"))" />
                 }
                 else
                 {
                     <div class="table-wrap">
                         <table class="data" style="min-width:560px">
                             <thead>
-                                <tr><th>Artículo</th><th>Tipo</th><th>Sede</th><th class="num">Cantidad</th><th class="num">Cuándo</th></tr>
+                                <tr><th>@T("home.articulo")</th><th>@T("home.tipo")</th><th>@T("home.sede")</th><th class="num">@T("home.cantidad")</th><th class="num">@T("home.cuando")</th></tr>
                             </thead>
                             <tbody>
                                 @foreach (var m in _movements)
@@ -70,8 +70,8 @@
         <div class="card">
             <div class="card-head">
                 <div>
-                    <h3>Requiere atención</h3>
-                    <div class="sub">Artículos agotados o bajo su mínimo</div>
+                    <h3>@T("home.requiere_atencion")</h3>
+                    <div class="sub">@T("home.articulos_agotados_bajo_su_minimo")</div>
                 </div>
             </div>
             <div class="card-body">
@@ -79,25 +79,25 @@
                 {
                     <div class="list-row">
                         <div class="stat-icon" style="width:40px;height:40px;border-radius:12px;background:var(--accent-soft);color:var(--accent-ink)"><Icon Name="wallet" Size="18" /></div>
-                        <div class="two-line"><span class="t2">Valor del inventario</span><span class="t1" style="font-size:18px">@Fmt.Money(v.StockValue, v.CurrencyCode)</span></div>
+                        <div class="two-line"><span class="t2">@T("home.valor_del_inventario")</span><span class="t1" style="font-size:18px">@Fmt.Money(v.StockValue, v.CurrencyCode)</span></div>
                     </div>
                 }
                 @if (_low.Count == 0)
                 {
-                    <EmptyState Icon="package-check" Title="Todo en orden" Text="Ningún artículo está agotado ni bajo su mínimo." />
+                    <EmptyState Icon="package-check" Title="@(T("home.todo_en_orden"))" Text="@(T("home.ningun_articulo_esta_agotado_ni"))" />
                 }
                 @foreach (var r in _low)
                 {
                     var (text, tone) = StatusPill.ForStock(r.Status);
                     <div class="list-row">
                         <Avatar Text="@r.ItemName" Size="36" />
-                        <div class="two-line"><span class="t1">@r.ItemName</span><span class="t2">@r.SiteName · disp. @Fmt.Qty(r.Available)@(r.ReorderPoint is { } min ? $" / mín. {Fmt.Qty(min)}" : "")</span></div>
+                        <div class="two-line"><span class="t1">@r.ItemName</span><span class="t2">@T("home.disp", r.SiteName, Fmt.Qty(r.Available), (r.ReorderPoint is { } min ? T("home.min", Fmt.Qty(min)) : ""))</span></div>
                         <span class="end"><StatusPill Text="@text" Tone="@tone" /></span>
                     </div>
                 }
                 @if (_low.Count > 0)
                 {
-                    <a class="btn btn-sm btn-block" style="margin-top:12px" href="inventario?estado=Low">Ver todo el stock bajo</a>
+                    <a class="btn btn-sm btn-block" style="margin-top:12px" href="inventario?estado=Low">@T("home.ver_todo_el_stock_bajo")</a>
                 }
             </div>
         </div>
