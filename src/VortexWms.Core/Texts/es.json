@@ -51,6 +51,7 @@
   "error.las_cantidades_no_pueden_ser": "Las cantidades no pueden ser negativas.",
   "error.motivo_de_ajuste_no_valido": "Motivo de ajuste no válido.",
   "error.permiso_supervisor": "Tu rol ({0}) no permite {1}. Pide a un supervisor que lo haga.",
+  "error.sede_no_asignada": "No trabajas en la sede {0}. Pide al administrador que te la asigne en el hub.",
   "error.solo_se_anula_una_recepcion": "Solo se anula una recepción pendiente.",
   "error.solo_se_cancela_un_pedido": "Solo se cancela un pedido sin despachar.",
   "error.solo_se_puede_preparar_un": "Solo se puede preparar un pedido pendiente.",

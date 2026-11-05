@@ -51,6 +51,7 @@
   "error.las_cantidades_no_pueden_ser": "As quantidades não podem ser negativas.",
   "error.motivo_de_ajuste_no_valido": "Motivo de ajuste inválido.",
   "error.permiso_supervisor": "Sua função ({0}) não permite {1}. Peça a um supervisor que o faça.",
+  "error.sede_no_asignada": "Você não trabalha na unidade {0}. Peça ao administrador que a atribua a você no hub.",
   "error.solo_se_anula_una_recepcion": "Só se anula um recebimento pendente.",
   "error.solo_se_cancela_un_pedido": "Só se cancela um pedido não despachado.",
   "error.solo_se_puede_preparar_un": "Só se pode separar um pedido pendente.",

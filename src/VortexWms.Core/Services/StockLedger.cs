@@ -156,13 +156,29 @@ public abstract class WmsService(WmsDatabase db, IWmsContext context, TimeProvid
         return result;
     }
 
-    /// <summary>Almacén por defecto: el elegido por el usuario o el primer almacén activo.</summary>
+    /// <summary>Si el usuario trabaja en la sede (sedes asignadas en el hub; sin asignar, todas).</summary>
+    protected bool CanUseSite(Guid siteId) => Context.SiteIds.Count == 0 || Context.SiteIds.Contains(siteId);
+
+    /// <summary>Corta la operación si la sede no está entre las del usuario.</summary>
+    protected async Task RequireSiteAccessAsync(SqliteConnection c, SqliteTransaction? tx, Guid siteId)
+    {
+        if (CanUseSite(siteId))
+            return;
+        var name = await c.ScalarAsync<string?>("SELECT name FROM sites WHERE id = $id", tx, ("$id", siteId));
+        Require(false, T("error.sede_no_asignada", name ?? siteId.ToString()));
+    }
+
+    /// <summary>Filtro SQL de las sedes del usuario sobre <paramref name="column"/> (vacío si trabaja en todas).</summary>
+    protected string MySites(string column) =>
+        Context.SiteIds.Count == 0 ? "" : $" AND {column} IN ({string.Join(", ", Context.SiteIds.Select(s => $"'{s}'"))})";
+
+    /// <summary>Almacén por defecto: el elegido por el usuario o el primer almacén activo de sus sedes.</summary>
     protected async Task<Guid?> DefaultSiteAsync(SqliteConnection c, SqliteTransaction? tx)
     {
-        if (Context.DefaultSiteId is { } chosen)
+        if (Context.DefaultSiteId is { } chosen && CanUseSite(chosen))
             return chosen;
-        return await c.ScalarAsync<string?>("""
-            SELECT id FROM sites WHERE is_deleted = 0 AND is_active = 1
+        return await c.ScalarAsync<string?>($"""
+            SELECT id FROM sites WHERE is_deleted = 0 AND is_active = 1 {MySites("id")}
             ORDER BY CASE kind WHEN 'Warehouse' THEN 0 ELSE 1 END, code LIMIT 1
             """, tx) is { } id ? Guid.Parse(id) : null;
     }

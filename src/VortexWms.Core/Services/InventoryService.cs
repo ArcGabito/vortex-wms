@@ -36,8 +36,8 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     {
         await using var c = await Db.OpenAsync(ct);
         var args = StockArgs(q);
-        var total = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM stock s JOIN items i ON i.id = s.item_id JOIN sites t ON t.id = s.site_id {StockWhere}", null, args);
-        var rows = await c.QueryAsync($"{StockSelect} {StockWhere} ORDER BY i.name COLLATE NOCASE, t.code LIMIT $limit OFFSET $offset",
+        var total = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM stock s JOIN items i ON i.id = s.item_id JOIN sites t ON t.id = s.site_id {StockWhere}{MySites("s.site_id")}", null, args);
+        var rows = await c.QueryAsync($"{StockSelect} {StockWhere}{MySites("s.site_id")} ORDER BY i.name COLLATE NOCASE, t.code LIMIT $limit OFFSET $offset",
             ReadStock, null, args);
         return new PagedResult<StockRow>(rows, total, q.Page, q.PageSize);
     }
@@ -60,7 +60,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         await using var c = await Db.OpenAsync(ct);
         return await c.QueryAsync($"""
             {StockSelect}
-            WHERE i.is_deleted = 0 AND t.is_deleted = 0
+            WHERE i.is_deleted = 0 AND t.is_deleted = 0{MySites("s.site_id")}
               AND (s.on_hand <= 0 OR (s.reorder_point IS NOT NULL AND s.on_hand - s.reserved <= s.reorder_point))
             ORDER BY s.on_hand - COALESCE(s.reorder_point, 0), i.name LIMIT $limit
             """, ReadStock, null, ("$limit", limit));
@@ -70,7 +70,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     public async Task<string> ExportStockCsvAsync(StockQuery q, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
-        var rows = await c.QueryAsync($"{StockSelect} {StockWhere} ORDER BY i.name COLLATE NOCASE, t.code LIMIT $limit OFFSET $offset",
+        var rows = await c.QueryAsync($"{StockSelect} {StockWhere}{MySites("s.site_id")} ORDER BY i.name COLLATE NOCASE, t.code LIMIT $limit OFFSET $offset",
             ReadStock, null, StockArgs(q with { Page = 1, PageSize = int.MaxValue }));
         var csv = new StringBuilder("sku,articulo,categoria,sede,ubicacion,stock,reservado,disponible,minimo,unidad,precio,moneda,valor\n");
         foreach (var r in rows)
@@ -97,6 +97,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         return InTransactionAsync(async (c, tx, now) =>
         {
             await RequireSiteAndItemAsync(c, tx, siteId, itemId);
+            await RequireSiteAccessAsync(c, tx, siteId);
             var current = await StockLedger.OnHandAsync(c, tx, siteId, itemId);
             var change = countedQuantity is { } counted ? counted - current : delta!.Value;
             Require(change != 0, T("error.el_ajuste_no_cambia_el"));
@@ -120,6 +121,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
 
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await RequireSiteAccessAsync(c, tx, fromSiteId);
             foreach (var line in merged)
             {
                 await RequireSiteAndItemAsync(c, tx, fromSiteId, line.ItemId);
@@ -156,6 +158,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         Require(reorderPoint is null or >= 0, T("error.el_minimo_no_puede_ser"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await RequireSiteAccessAsync(c, tx, siteId);
             var settings = new StockSettingsData(siteId, itemId, Clean(bin)?.ToUpperInvariant(), reorderPoint);
             await WriteSettingsAsync(c, tx, settings, now);
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.RecordUpserted,
@@ -199,11 +202,11 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
             ("$limit", q.PageSize), ("$offset", (q.Page - 1) * q.PageSize),
         };
         const string from = "FROM movements m LEFT JOIN items i ON i.id = m.item_id LEFT JOIN sites t ON t.id = m.site_id";
-        var total = await c.ScalarAsync<int>($"SELECT COUNT(*) {from} {where}", null, args);
+        var total = await c.ScalarAsync<int>($"SELECT COUNT(*) {from} {where}{MySites("m.site_id")}", null, args);
         var rows = await c.QueryAsync($"""
             SELECT m.*, COALESCE(i.sku, '?') AS sku, COALESCE(i.name, 'Artículo desconocido') AS item_name,
                    COALESCE(t.name, 'Sede desconocida') AS site_name
-            {from} {where} ORDER BY m.occurred_at DESC, m.rowid DESC LIMIT $limit OFFSET $offset
+            {from} {where}{MySites("m.site_id")} ORDER BY m.occurred_at DESC, m.rowid DESC LIMIT $limit OFFSET $offset
             """, r => new MovementRow(r.Guid("id"), r.Time("occurred_at"), r.Str("kind"), r.Guid("site_id"), r.Str("site_name"),
                 r.Guid("item_id"), r.Str("sku"), r.Str("item_name"), r.Dec("quantity"), r.Dec("on_hand_after"),
                 r.StrOrNull("reason"), r.StrOrNull("reference"), r.StrOrNull("user_name"), r.StrOrNull("note")), null, args);
@@ -221,17 +224,17 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
 
         var activeItems = await c.ScalarAsync<int>("SELECT COUNT(*) FROM items WHERE is_deleted = 0 AND is_active = 1 AND track_inventory = 1");
         var categories = await c.ScalarAsync<int>("SELECT COUNT(DISTINCT category) FROM items WHERE is_deleted = 0 AND category IS NOT NULL");
-        var units = await c.ScalarAsync<decimal>("SELECT COALESCE(SUM(on_hand), 0) FROM stock");
-        var units30 = await c.ScalarAsync<decimal>("SELECT COALESCE(SUM(quantity), 0) FROM movements WHERE occurred_at >= $d", null, ("$d", d30));
-        var ordersOpen = await c.ScalarAsync<int>("SELECT COUNT(*) FROM orders WHERE status IN ('pending', 'picking')");
-        var ordersPicking = await c.ScalarAsync<int>("SELECT COUNT(*) FROM orders WHERE status = 'picking'");
-        var dispatched = await c.ScalarAsync<int>("SELECT COUNT(*) FROM orders WHERE status = 'dispatched' AND dispatched_at >= $d", null, ("$d", d30));
-        var dispatchedPrev = await c.ScalarAsync<int>("SELECT COUNT(*) FROM orders WHERE status = 'dispatched' AND dispatched_at >= $a AND dispatched_at < $b",
+        var units = await c.ScalarAsync<decimal>($"SELECT COALESCE(SUM(on_hand), 0) FROM stock WHERE 1 = 1{MySites("site_id")}");
+        var units30 = await c.ScalarAsync<decimal>($"SELECT COALESCE(SUM(quantity), 0) FROM movements WHERE occurred_at >= $d{MySites("site_id")}", null, ("$d", d30));
+        var ordersOpen = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM orders WHERE status IN ('pending', 'picking'){MySites("site_id")}");
+        var ordersPicking = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM orders WHERE status = 'picking'{MySites("site_id")}");
+        var dispatched = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM orders WHERE status = 'dispatched' AND dispatched_at >= $d{MySites("site_id")}", null, ("$d", d30));
+        var dispatchedPrev = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM orders WHERE status = 'dispatched' AND dispatched_at >= $a AND dispatched_at < $b{MySites("site_id")}",
             null, ("$a", d60), ("$b", d30));
-        var receipts = await c.ScalarAsync<int>("SELECT COUNT(*) FROM receipts WHERE status = 'expected'");
-        var low = await c.ScalarAsync<int>("SELECT COUNT(*) FROM stock WHERE on_hand > 0 AND reorder_point IS NOT NULL AND on_hand - reserved <= reorder_point");
-        var outOfStock = await c.ScalarAsync<int>("SELECT COUNT(*) FROM stock s JOIN items i ON i.id = s.item_id WHERE s.on_hand <= 0 AND i.is_deleted = 0");
-        var value = await c.ScalarAsync<decimal>("SELECT COALESCE(SUM(s.on_hand * i.price), 0) FROM stock s JOIN items i ON i.id = s.item_id WHERE s.on_hand > 0");
+        var receipts = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM receipts WHERE status = 'expected'{MySites("site_id")}");
+        var low = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM stock WHERE on_hand > 0 AND reorder_point IS NOT NULL AND on_hand - reserved <= reorder_point{MySites("site_id")}");
+        var outOfStock = await c.ScalarAsync<int>($"SELECT COUNT(*) FROM stock s JOIN items i ON i.id = s.item_id WHERE s.on_hand <= 0 AND i.is_deleted = 0{MySites("s.site_id")}");
+        var value = await c.ScalarAsync<decimal>($"SELECT COALESCE(SUM(s.on_hand * i.price), 0) FROM stock s JOIN items i ON i.id = s.item_id WHERE s.on_hand > 0{MySites("s.site_id")}");
         var currency = await c.ScalarAsync<string?>("SELECT currency_code FROM company WHERE id = 1") ?? "PEN";
 
         return new DashboardSummary(activeItems, categories, units, Change(units, units - units30), ordersOpen, ordersPicking,

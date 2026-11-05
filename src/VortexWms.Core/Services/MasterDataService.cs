@@ -271,13 +271,14 @@ public sealed partial class MasterDataService(WmsDatabase db, IWmsContext contex
             """, r => r.Str("category"));
     }
 
-    public async Task<IReadOnlyList<SiteRow>> GetSitesAsync(bool activeOnly = false, CancellationToken ct = default)
+    /// <param name="mineOnly">Solo las sedes asignadas al usuario (para elegir dónde operar).</param>
+    public async Task<IReadOnlyList<SiteRow>> GetSitesAsync(bool activeOnly = false, bool mineOnly = false, CancellationToken ct = default)
     {
         await using var c = await Db.OpenAsync(ct);
-        return await c.QueryAsync("""
+        return await c.QueryAsync($"""
             SELECT t.*, COUNT(s.item_id) AS sku_count, COALESCE(SUM(s.on_hand), 0) AS units
             FROM sites t LEFT JOIN stock s ON s.site_id = t.id AND s.on_hand <> 0
-            WHERE t.is_deleted = 0 AND ($active = 0 OR t.is_active = 1)
+            WHERE t.is_deleted = 0 AND ($active = 0 OR t.is_active = 1){(mineOnly ? MySites("t.id") : "")}
             GROUP BY t.id ORDER BY CASE t.kind WHEN 'Warehouse' THEN 0 ELSE 1 END, t.code
             """, r => new SiteRow(r.Guid("id"), r.Str("code"), r.Str("name"), r.Str("kind"), r.StrOrNull("phone"),
                 r.StrOrNull("address_line"), r.StrOrNull("city"), r.StrOrNull("country_code"), r.Bool("is_active"),

@@ -20,6 +20,14 @@ Roles del WMS (`session.Access.Role`, los asigna el OrgAdmin): `operario` (sin r
 y `administrador` (también artículos y almacenes). OrgAdmin y PlatformAdmin del hub son administradores. Cada acción
 valida su permiso en Core y los ajustes, anulaciones y cancelaciones quedan en la auditoría local.
 
+### Sedes por usuario
+
+Si el administrador asigna sedes al usuario en el hub (`siteIds` del miembro del WMS), la sesión las trae en
+`Access.SiteIds`: el usuario solo ve el stock, los movimientos, los pedidos y las recepciones de esas sedes, y solo
+opera en ellas (recibir, ajustar, despachar, preparar, cancelar, cambiar ubicación y mínimo, transferir **desde**
+ellas; puede transferir hacia cualquier sede). Lo valida Core. Sin sedes asignadas, o si es administrador de la
+organización, trabaja en todas.
+
 ## Datos maestros (dueño: el hub)
 
 | Dato | En el WMS | Altas/cambios desde el WMS |
@@ -102,5 +110,4 @@ El WMS se suscribe también a sus propios eventos (`IncludeOwnEvents = true`):
 
 ### Limitaciones conocidas
 
-- Cada usuario ve todas las sedes: las sedes por usuario necesitan un dato nuevo en el hub (propuesta de la fase 0).
 - El ERP y el CRM todavía no publican ni consumen `order.cancelled`; el WMS ya lo aplica venga de donde venga.

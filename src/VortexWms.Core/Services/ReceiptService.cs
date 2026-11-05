@@ -28,13 +28,13 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
             ("$status", string.IsNullOrWhiteSpace(status) ? null : status), ("$search", string.IsNullOrWhiteSpace(search) ? null : search.Trim()),
             ("$like", Like(search)), ("$limit", pageSize), ("$offset", (page - 1) * pageSize),
         };
-        var total = await c.ScalarAsync<int>($"SELECT COUNT(*) {from} {where}", null, args);
+        var total = await c.ScalarAsync<int>($"SELECT COUNT(*) {from} {where}{MySites("r.site_id")}", null, args);
         var rows = await c.QueryAsync($"""
             SELECT r.*, p.name AS supplier_name, t.name AS site_name,
                    (SELECT COUNT(*) FROM receipt_lines l WHERE l.receipt_id = r.id) AS line_count,
                    (SELECT COALESCE(SUM(expected_qty), 0) FROM receipt_lines l WHERE l.receipt_id = r.id) AS expected_units,
                    (SELECT COALESCE(SUM(received_qty), 0) FROM receipt_lines l WHERE l.receipt_id = r.id) AS received_units
-            {from} {where}
+            {from} {where}{MySites("r.site_id")}
             ORDER BY CASE r.status WHEN 'expected' THEN 0 ELSE 1 END, r.created_at DESC
             LIMIT $limit OFFSET $offset
             """, r => new ReceiptRow(r.Guid("id"), r.Str("number"), r.GuidOrNull("purchase_order_id"), r.GuidOrNull("supplier_id"),
@@ -63,6 +63,7 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
 
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await RequireSiteAccessAsync(c, tx, siteId);
             foreach (var line in merged)
                 await InventoryService.RequireSiteAndItemAsync(c, tx, siteId, line.ItemId);
 
@@ -104,6 +105,7 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
             Require(receipt is not null, T("error.la_recepcion_no_existe"));
             Require(receipt!.Status == ReceiptStatuses.Expected, T("error.esta_recepcion_ya_fue_procesada"));
             await InventoryService.RequireSiteAsync(c, tx, receipt.SiteId);
+            await RequireSiteAccessAsync(c, tx, receipt.SiteId);
 
             var lines = await c.QueryAsync("SELECT line_no, item_id FROM receipt_lines WHERE receipt_id = $id ORDER BY line_no",
                 r => (LineNo: r.Int("line_no"), ItemId: r.Guid("item_id")), tx, ("$id", receiptId));
@@ -130,6 +132,8 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
         {
             var status = await c.ScalarAsync<string?>("SELECT status FROM receipts WHERE id = $id", tx, ("$id", receiptId));
             Require(status == ReceiptStatuses.Expected, T("error.solo_se_anula_una_recepcion"));
+            if (await c.ScalarAsync<string?>("SELECT site_id FROM receipts WHERE id = $id", tx, ("$id", receiptId)) is { } site)
+                await RequireSiteAccessAsync(c, tx, Guid.Parse(site));
             var receipt = await c.FirstOrDefaultAsync("SELECT number, purchase_order_id FROM receipts WHERE id = $id",
                 r => new { Number = r.Str("number"), PurchaseOrderId = r.GuidOrNull("purchase_order_id") }, tx, ("$id", receiptId));
             await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Voided, "receipt", receiptId, receipt!.Number, null);

@@ -260,7 +260,7 @@
 
     protected override async Task LoadAsync()
     {
-        _sites = await Wms.Master.GetSitesAsync(activeOnly: true);
+        _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
         _suppliers = await Wms.Master.GetPartyOptionsAsync(suppliers: true);
         _result = await Wms.Receipts.GetReceiptsAsync(_search, _status, _page, PageSize);
         // Sin nada por recibir, mostrar todas para que la pantalla no parezca vacía.

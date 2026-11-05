@@ -65,7 +65,8 @@ corresponde.
 sola vez; cancelar un pedido en un equipo libera la reserva en los demás; un `operario` que intenta ajustar stock
 recibe `WmsValidationException`.
 
-**Estado (2026-11):** hecha, salvo las sedes por usuario, que esperan el dato en el hub. Ids deterministas en
+**Estado (2026-11):** hecha. Sedes por usuario con `Access.SiteIds` del hub (vacío = todas; los administradores de la
+organización ven todas). Ids deterministas en
 recepciones y despachos con conflictos visibles en Configuración, `order.picking_started`, `order.cancelled`,
 `receipt.cancelled` y `wms.record.upserted` (ubicación y mínimo), roles, y limpieza de `processed_events` a los 180
 días. Pruebas en `OfflineConflictTests`.
