@@ -37,7 +37,9 @@ valida su permiso en Core y los ajustes, anulaciones y cancelaciones quedan en l
 ## Datos propios del WMS
 
 Existencias por sede, reservas, ubicación (bin), stock mínimo, kardex (`movements`), recepciones, pedidos y
-despachos. Viven solo en la base local de cada equipo; lo que otros necesitan saber sale como evento.
+despachos. Viven en la base local de cada equipo; lo que otros necesitan saber sale como evento. La ubicación y el
+stock mínimo por artículo y sede se comparten con los demás equipos del WMS por `wms.record.upserted` (gana el
+cambio más reciente).
 
 ## Eventos (versión 1)
 
@@ -50,6 +52,10 @@ despachos. Viven solo en la base local de cada equipo; lo que otros necesitan sa
 | `stock.transferred` | Al transferir entre sedes | Id de la transferencia |
 | `shipment.dispatched` | Al despachar un pedido | Id del despacho |
 | `order.created` | Al crear un pedido en el WMS (`source = WMS`) | Id del pedido |
+| `order.picking_started` | Al empezar a preparar un pedido | Determinista por pedido |
+| `order.cancelled` | Al cancelar un pedido (libera la reserva) | Determinista por pedido |
+| `receipt.cancelled` | Al anular una recepción esperada | Determinista por recepción |
+| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede | Id nuevo; `updatedAt` en los datos |
 
 `stock.adjusted` lleva el delta y la existencia resultante (`quantityDelta`, `quantityOnHand`), el motivo y la
 referencia del documento.
@@ -63,7 +69,8 @@ referencia del documento.
 | `sale.returned` (POS) | Reingresa lo devuelto |
 | `order.created` (ERP, CRM) | Crea el pedido y reserva stock en su sede |
 | `purchase_order.created` (ERP) | Crea la recepción **Por recibir** |
-| `stock.adjusted`, `goods.received`, `shipment.dispatched` (otro equipo WMS) | Ver abajo |
+| `order.cancelled` (ERP, CRM u otro equipo WMS) | Cancela el pedido y libera la reserva; si ya se despachó, prevalece el despacho |
+| `stock.adjusted`, `goods.received`, `shipment.dispatched`, `order.picking_started`, `receipt.cancelled`, `wms.record.upserted` (otro equipo WMS) | Ver abajo |
 
 - Cada evento se aplica una sola vez (`processed_events`), en la misma transacción que su efecto.
 - `schemaVersion` distinto de 1 o `data` ilegible se registran como ignorados y no traban el feed.
@@ -79,16 +86,21 @@ El WMS se suscribe también a sus propios eventos (`IncludeOwnEvents = true`):
    la sede y el artículo). Si dos equipos procesan la misma venta del POS, generan el mismo movimiento y el mismo
    evento, y el hub deduplica el segundo.
 3. Las recepciones creadas desde una orden de compra también tienen Id determinista, así todos los equipos hablan de
-   la misma recepción.
+   la misma recepción. Los movimientos de una recepción y de un despacho, y el despacho mismo, también son
+   deterministas (documento y artículo; la sede no entra): si dos equipos reciben la misma orden de compra o despachan
+   el mismo pedido sin conexión, el hub se queda con lo que le llegó primero y el stock se mueve una sola vez.
+5. **Conflictos.** Si esos dos equipos registraron datos distintos (otra cantidad recibida, otra sede de despacho, uno
+   canceló y el otro despachó), cada equipo adopta la versión del hub: deshace su movimiento y aplica el del hub. El
+   caso queda en `sync_conflicts` y se ve en Configuración → Conflictos entre equipos. Un despacho prevalece sobre una
+   cancelación: la mercadería ya salió.
+6. Los estados viajan como eventos: empezar la preparación (`order.picking_started`), cancelar un pedido
+   (`order.cancelled`) y anular una recepción (`receipt.cancelled`).
+7. `processed_events` guarda los eventos aplicados durante 180 días; los más viejos se borran al abrir la base (el feed
+   no los vuelve a entregar).
 4. Los documentos se numeran por equipo para no chocar sin conexión: `REC-9AFE-00001`, `TRF-…`, `PED-…`, `DES-…`
    (el prefijo sale del Id del equipo y se ve en Configuración).
 
 ### Limitaciones conocidas
 
-- Empezar la preparación (picking) y cancelar pedidos o anular recepciones no se replica a otros equipos: el catálogo
-  de eventos v1 no tiene `order.cancelled` ni `receipt.cancelled`. Según la sección 10 de la guía, se propondrá en el
-  hub en vez de resolverlo con un parche local.
-- Los movimientos de despacho y de recepción usan Ids aleatorios: si dos equipos despachan el mismo pedido (o reciben
-  la misma orden de compra) sin conexión, el stock se mueve dos veces. Se corrige en la fase 0 de
-  [ROADMAP.md](ROADMAP.md).
-- `processed_events` crece sin límite; falta una política de limpieza por antigüedad.
+- Cada usuario ve todas las sedes: las sedes por usuario necesitan un dato nuevo en el hub (propuesta de la fase 0).
+- El ERP y el CRM todavía no publican ni consumen `order.cancelled`; el WMS ya lo aplica venga de donde venga.

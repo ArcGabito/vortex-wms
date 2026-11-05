@@ -132,5 +132,15 @@ internal static class Schema
         ALTER TABLE company ADD COLUMN default_tax_rate REAL;
         ALTER TABLE company ADD COLUMN time_zone TEXT;
         """ + VortexApi.Suite.Auditing.AuditSchema.Sql,
+        // 3: fase 0. Conflictos entre equipos (dos equipos hicieron lo mismo sin conexión con datos distintos; gana la
+        // versión que el hub recibió primero) y versión de los ajustes por artículo y sede (ubicación y mínimo).
+        """
+        CREATE TABLE sync_conflicts (
+            id TEXT PRIMARY KEY, occurred_at TEXT NOT NULL, kind TEXT NOT NULL, document_id TEXT, reference TEXT,
+            detail TEXT, dismissed INTEGER NOT NULL DEFAULT 0);
+        CREATE INDEX ix_sync_conflicts_open ON sync_conflicts (dismissed, occurred_at);
+        ALTER TABLE stock ADD COLUMN settings_updated_at TEXT;
+        CREATE INDEX ix_processed_events_at ON processed_events (processed_at);
+        """,
     ];
 }

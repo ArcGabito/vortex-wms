@@ -65,6 +65,11 @@ corresponde.
 sola vez; cancelar un pedido en un equipo libera la reserva en los demás; un `operario` que intenta ajustar stock
 recibe `WmsValidationException`.
 
+**Estado (2026-11):** hecha, salvo las sedes por usuario, que esperan el dato en el hub. Ids deterministas en
+recepciones y despachos con conflictos visibles en Configuración, `order.picking_started`, `order.cancelled`,
+`receipt.cancelled` y `wms.record.upserted` (ubicación y mínimo), roles, y limpieza de `processed_events` a los 180
+días. Pruebas en `OfflineConflictTests`.
+
 ## Fase 1: costo y kardex valorizado · M-L
 
 **Objetivo:** saber cuánto vale el inventario a costo y cuánto costó lo que salió.

@@ -78,6 +78,32 @@
                     }
                 </div>
             </div>
+
+            <div class="card">
+                <div class="card-head">
+                    <div>
+                        <h3>@T("settings.conflictos_entre_equipos")</h3>
+                        <div class="sub">@T("settings.conflictos_explicacion")</div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    @if (_conflicts.Count == 0)
+                    {
+                        <div class="list-row"><Icon Name="check" Size="18" Class="faint" /><span class="muted">@T("settings.sin_conflictos")</span></div>
+                    }
+                    @foreach (var conflict in _conflicts)
+                    {
+                        <div class="list-row" @key="conflict.Id" style="align-items:flex-start">
+                            <Icon Name="alert" Size="18" Class="faint" />
+                            <div class="two-line" style="flex:1">
+                                <span class="t1" style="white-space:normal">@T("conflict." + conflict.Kind, conflict.Reference ?? "—", conflict.Detail ?? "")</span>
+                                <span class="t2">@Fmt.DateTime(conflict.OccurredAt)</span>
+                            </div>
+                            <button class="btn btn-sm" @onclick="() => DismissConflictAsync(conflict)">@T("settings.revisado")</button>
+                        </div>
+                    }
+                </div>
+            </div>
         </div>
 
         <div style="display:flex;flex-direction:column;gap:20px;min-width:0">
@@ -171,6 +197,7 @@
     private static readonly string Version = AppInfo.Current.Version.ToString(3);
 
     private IReadOnlyList<VortexFailedEntry> _failed = [];
+    private IReadOnlyList<VortexWms.Core.Services.SyncConflictRow> _conflicts = [];
     private IReadOnlyList<SiteRow> _sites = [];
 
     protected override void OnInitialized() => Session.Changed += OnSessionChanged;
@@ -179,6 +206,13 @@
     {
         _sites = await Wms.Master.GetSitesAsync(activeOnly: true);
         _failed = await Session.GetFailedAsync();
+        _conflicts = await Wms.Conflicts.GetOpenAsync();
+    }
+
+    private async Task DismissConflictAsync(VortexWms.Core.Services.SyncConflictRow conflict)
+    {
+        await Wms.Conflicts.DismissAsync(conflict.Id);
+        _conflicts = await Wms.Conflicts.GetOpenAsync();
     }
 
     private void OnSessionChanged() => _ = InvokeAsync(async () =>

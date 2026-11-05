@@ -41,7 +41,22 @@ public sealed class WmsSyncHandlers(
         .OnEvent(SuiteEvents.PurchaseOrderCreated, HandlePurchaseOrderCreatedAsync)
         .OnEvent(SuiteEvents.StockAdjusted, HandleStockAdjustedAsync)
         .OnEvent(SuiteEvents.GoodsReceived, HandleGoodsReceivedAsync)
-        .OnEvent(SuiteEvents.ShipmentDispatched, HandleShipmentDispatchedAsync);
+        .OnEvent(SuiteEvents.ShipmentDispatched, HandleShipmentDispatchedAsync)
+        .OnEvent(SuiteEvents.OrderPickingStarted, HandleOrderPickingStartedAsync)
+        .OnEvent(SuiteEvents.OrderCancelled, HandleOrderCancelledAsync)
+        .OnEvent(SuiteEvents.ReceiptCancelled, HandleReceiptCancelledAsync)
+        .OnEvent(SuiteEvents.RecordUpserted, HandleRecordUpsertedAsync);
+
+    /// <summary>Cuánto se recuerdan los eventos ya aplicados. El feed no vuelve a entregar eventos tan viejos.</summary>
+    public static readonly TimeSpan ProcessedEventsRetention = TimeSpan.FromDays(180);
+
+    /// <summary>Borra los registros de eventos aplicados hace más de <see cref="ProcessedEventsRetention"/>.</summary>
+    public async Task<int> PruneProcessedEventsAsync(CancellationToken ct = default)
+    {
+        await using var c = await db.OpenAsync(ct);
+        return await c.ExecAsync("DELETE FROM processed_events WHERE processed_at < $limit", null,
+            ("$limit", clock.GetUtcNow() - ProcessedEventsRetention));
+    }
 
     // ---------- Otros sistemas ----------
 
@@ -128,7 +143,7 @@ public sealed class WmsSyncHandlers(
                 return "ignorado: el stock solo lo publica el WMS";
             if (s.SiteId == Guid.Empty || s.ItemId == Guid.Empty)
                 return "sin siteId o itemId";
-            await StockLedger.ReplicateAsync(c, tx, e.Id, e.OccurredAt, s);
+            await StockLedger.ReplicateAsync(c, tx, e.Id, e.OccurredAt, s, now);
             return null;
         }, ct);
 
@@ -149,6 +164,49 @@ public sealed class WmsSyncHandlers(
             if (e.Source != ProductCode || d.OrderId == Guid.Empty)
                 return null;
             await orders.ApplyDispatchedElsewhereAsync(c, tx, now, e.OccurredAt, d);
+            return null;
+        }, ct);
+
+    /// <summary>Preparación empezada en otro equipo del WMS.</summary>
+    public Task HandleOrderPickingStartedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<OrderPickingStarted>(e, async (p, c, tx, now) =>
+        {
+            if (e.Source != ProductCode)
+                return "ignorado: la preparación solo la publica el WMS";
+            await OrderService.ApplyPickingStartedAsync(c, tx, p);
+            return null;
+        }, ct);
+
+    /// <summary>Pedido cancelado en otro equipo del WMS, en el ERP o en el CRM.</summary>
+    public Task HandleOrderCancelledAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<OrderCancelled>(e, async (o, c, tx, now) =>
+        {
+            await orders.ApplyCancelledAsync(c, tx, now, o);
+            return null;
+        }, ct);
+
+    /// <summary>Recepción esperada anulada en otro equipo del WMS.</summary>
+    public Task HandleReceiptCancelledAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<ReceiptCancelled>(e, async (r, c, tx, now) =>
+        {
+            if (e.Source != ProductCode)
+                return "ignorado: las recepciones solo las anula el WMS";
+            await ReceiptService.ApplyCancelledAsync(c, tx, r);
+            return null;
+        }, ct);
+
+    /// <summary>Datos propios del WMS editados en otro equipo (gana el cambio más reciente).</summary>
+    public Task HandleRecordUpsertedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<WmsRecord>(e, async (r, c, tx, now) =>
+        {
+            if (e.Source != ProductCode)
+                return "ignorado: solo lo publica el WMS";
+            if (r.Kind != WmsRecordKinds.StockSettings)
+                return $"ignorado: tipo {r.Kind} desconocido";
+            var s = r.Data.Deserialize<StockSettingsData>(VortexJson.Options);
+            if (s is null || s.SiteId == Guid.Empty || s.ItemId == Guid.Empty)
+                return "sin siteId o itemId";
+            await InventoryService.ApplySettingsAsync(c, tx, s, r.UpdatedAt);
             return null;
         }, ct);
 

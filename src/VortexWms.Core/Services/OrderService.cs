@@ -99,11 +99,29 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
     internal async Task ApplyDispatchedElsewhereAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now,
         DateTimeOffset occurredAt, ShipmentDispatched d)
     {
-        var order = await c.FirstOrDefaultAsync("SELECT status, site_id FROM orders WHERE id = $id",
-            r => new { Status = r.Str("status"), SiteId = r.Guid("site_id") }, tx, ("$id", d.OrderId));
-        if (order is null || order.Status is not (OrderStatuses.Pending or OrderStatuses.Picking))
+        var order = await c.FirstOrDefaultAsync("SELECT status, site_id, number, shipment_id, carrier, tracking_number FROM orders WHERE id = $id",
+            r => new { Status = r.Str("status"), SiteId = r.Guid("site_id"), Number = r.Str("number"), ShipmentSite = r.Guid("site_id"),
+                Carrier = r.StrOrNull("carrier"), Tracking = r.StrOrNull("tracking_number") }, tx, ("$id", d.OrderId));
+        if (order is null)
             return;
-        if (order.SiteId != Guid.Empty)
+        if (order.Status == OrderStatuses.Dispatched)
+        {
+            // También se despachó aquí (o es el eco del propio despacho): queda la versión del hub.
+            if (order.ShipmentSite != d.SiteId || order.Carrier != d.Carrier || order.Tracking != d.TrackingNumber)
+            {
+                await c.ExecAsync("UPDATE orders SET site_id = $site, carrier = $carrier, tracking_number = $tracking WHERE id = $id", tx,
+                    ("$id", d.OrderId), ("$site", d.SiteId == Guid.Empty ? order.SiteId : d.SiteId), ("$carrier", d.Carrier),
+                    ("$tracking", d.TrackingNumber));
+                await SyncConflicts.RecordAsync(c, tx, now, SyncConflictKinds.DispatchedTwice, d.OrderId, order.Number, d.Number);
+            }
+            return;
+        }
+        if (order.Status == OrderStatuses.Cancelled)
+        {
+            // Se canceló aquí pero otro equipo ya lo despachó: la mercadería salió. La reserva ya se liberó al cancelar.
+            await SyncConflicts.RecordAsync(c, tx, now, SyncConflictKinds.DispatchedAfterCancel, d.OrderId, order.Number, d.Number);
+        }
+        else if (order.SiteId != Guid.Empty)
         {
             foreach (var line in (await LinesAsync(c, tx, d.OrderId)).Where(l => l.Tracked))
                 await StockLedger.ReserveAsync(c, tx, now, order.SiteId, line.ItemId, -line.Quantity);
@@ -119,10 +137,13 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
     public Task StartPickingAsync(Guid orderId, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Pick);
-        return InTransactionAsync(async (c, tx, _) =>
+        return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await StatusAsync(c, tx, orderId);
             Require(status == OrderStatuses.Pending, T("error.solo_se_puede_preparar_un"));
+            var number = await c.ScalarAsync<string?>("SELECT number FROM orders WHERE id = $id", tx, ("$id", orderId));
+            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.OrderPickingStarted, new OrderPickingStarted(orderId, number),
+                subjectType: "order", subjectId: number, id: DeterministicId.From("order_picking", orderId));
             return await c.ExecAsync("UPDATE orders SET status = 'picking' WHERE id = $id", tx, ("$id", orderId));
         }, ct);
     }
@@ -154,14 +175,17 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
                     T("error.stock_insuficiente_de_de", (await InventoryService.ItemLabelAsync(c, tx, line.ItemId)), onHand, line.Quantity));
             }
 
-            var shipmentId = Guid.NewGuid();
+            // Ids derivados del pedido: si dos equipos despachan el mismo pedido sin conexión, el hub se queda con uno y el
+            // stock baja una sola vez. La sede no entra en el Id: si despacharon desde sedes distintas, gana la del hub.
+            var shipmentId = DeterministicId.From("shipment", orderId);
             var shipmentNumber = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Shipment, Context.DeviceTag);
             foreach (var line in lines.Where(l => l.Tracked))
             {
                 if (order.SiteId != Guid.Empty)
                     await StockLedger.ReserveAsync(c, tx, now, order.SiteId, line.ItemId, -line.Quantity);
                 await StockLedger.ApplyAsync(c, tx, now, Context.UserName, new StockLedger.Entry(from, line.ItemId, -line.Quantity,
-                        MovementKinds.Shipment, "shipment", orderId, order.Number));
+                        MovementKinds.Shipment, "shipment", orderId, order.Number,
+                        MovementId: DeterministicId.From("shipment_line", orderId, line.ItemId)));
             }
 
             await c.ExecAsync("""
@@ -178,23 +202,48 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         }, ct);
     }
 
-    public Task CancelAsync(Guid orderId, CancellationToken ct = default)
+    public Task CancelAsync(Guid orderId, string? reason = null, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.CancelOrder);
         return InTransactionAsync(async (c, tx, now) =>
         {
             var status = await StatusAsync(c, tx, orderId);
             Require(status is OrderStatuses.Pending or OrderStatuses.Picking, T("error.solo_se_cancela_un_pedido"));
-            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "order", orderId,
-                await c.ScalarAsync<string?>("SELECT number FROM orders WHERE id = $id", tx, ("$id", orderId)), null);
-            var siteId = await c.ScalarAsync<string>("SELECT site_id FROM orders WHERE id = $id", tx, ("$id", orderId));
-            if (Guid.Parse(siteId) is var site && site != Guid.Empty)
-            {
-                foreach (var line in (await LinesAsync(c, tx, orderId)).Where(l => l.Tracked))
-                    await StockLedger.ReserveAsync(c, tx, now, site, line.ItemId, -line.Quantity);
-            }
-            return await c.ExecAsync("UPDATE orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", orderId));
+            var number = await c.ScalarAsync<string?>("SELECT number FROM orders WHERE id = $id", tx, ("$id", orderId));
+            await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.Cancelled, "order", orderId, number, Clean(reason));
+            await ReleaseAndCancelAsync(c, tx, now, orderId);
+            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.OrderCancelled, new OrderCancelled(orderId, number, Clean(reason)),
+                subjectType: "order", subjectId: number, id: DeterministicId.From("order_cancel", orderId));
+            return 1;
         }, ct);
+    }
+
+    /// <summary><c>order.picking_started</c> de otro equipo: el pedido pasa a preparación.</summary>
+    internal static Task ApplyPickingStartedAsync(SqliteConnection c, SqliteTransaction tx, OrderPickingStarted e) =>
+        c.ExecAsync("UPDATE orders SET status = 'picking' WHERE id = $id AND status = 'pending'", tx, ("$id", e.OrderId));
+
+    /// <summary>
+    /// <c>order.cancelled</c> del WMS (otro equipo), el ERP o el CRM: libera la reserva. Si aquí ya se despachó, la
+    /// mercadería salió: prevalece el despacho y queda el conflicto a la vista.
+    /// </summary>
+    internal async Task ApplyCancelledAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, OrderCancelled e)
+    {
+        var status = await StatusAsync(c, tx, e.OrderId);
+        if (status is OrderStatuses.Pending or OrderStatuses.Picking)
+            await ReleaseAndCancelAsync(c, tx, now, e.OrderId);
+        else if (status == OrderStatuses.Dispatched)
+            await SyncConflicts.RecordAsync(c, tx, now, SyncConflictKinds.CancelAfterDispatch, e.OrderId, e.Number, e.Reason);
+    }
+
+    private static async Task ReleaseAndCancelAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid orderId)
+    {
+        var siteId = await c.ScalarAsync<string>("SELECT site_id FROM orders WHERE id = $id", tx, ("$id", orderId));
+        if (Guid.Parse(siteId) is var site && site != Guid.Empty)
+        {
+            foreach (var line in (await LinesAsync(c, tx, orderId)).Where(l => l.Tracked))
+                await StockLedger.ReserveAsync(c, tx, now, site, line.ItemId, -line.Quantity);
+        }
+        await c.ExecAsync("UPDATE orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", orderId));
     }
 
     private static async Task InsertAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid orderId, string number,
