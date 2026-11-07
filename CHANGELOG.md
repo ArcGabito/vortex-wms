@@ -8,6 +8,10 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Fase 2: artículos de almacén.** Presentaciones con factor y código de barras propio (caja × 12, DUN-14), código
+  de unidad UN/ECE, peso y control por lote o serie, editables en Artículos y compartidos por el hub. Escanear el
+  código de una caja agrega la línea en cajas; recepciones, transferencias, pedidos y conteos se ingresan en
+  cualquier presentación y el stock queda en la unidad base. Un código de barras no puede ser de dos artículos.
 - **Fase 1: costo y kardex valorizado.** Costo promedio ponderado móvil por artículo y sede: las compras, las
   transferencias recibidas y las anulaciones y devoluciones de ventas entran con su costo, y las salidas salen al
   promedio. El kardex muestra costo unitario, costo total y saldo valorizado, con filtro por fechas; el inventario y

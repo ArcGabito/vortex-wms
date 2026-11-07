@@ -202,6 +202,47 @@
                 }
                 <label class="check"><input type="checkbox" @bind="f.IsActive" />@T("items.activo")</label>
             </div>
+            @if (f.Kind == "Product" && f.TrackInventory)
+            {
+                <div class="form-row three">
+                    <div class="field">
+                        <label>@T("items.codigo_de_unidad")</label>
+                        <input class="control" list="item-unit-codes" placeholder="NIU" @bind="f.UnitCode" style="text-transform:uppercase" />
+                        <datalist id="item-unit-codes">
+                            @foreach (var unitCode in UnitCodes)
+                            {
+                                <option value="@unitCode"></option>
+                            }
+                        </datalist>
+                    </div>
+                    <div class="field">
+                        <label>@T("items.peso_kg")</label>
+                        <input class="control" type="number" min="0" step="0.001" @bind="f.WeightKg" />
+                    </div>
+                    <div class="field">
+                        <label>@T("items.control")</label>
+                        <select class="select" @bind="f.Tracking">
+                            <option value="@ItemTrackings.None">@T("items.sin_lote_ni_serie")</option>
+                            <option value="@ItemTrackings.Lot">@T("items.por_lote")</option>
+                            <option value="@ItemTrackings.Serial">@T("items.por_serie")</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="field">
+                    <label>@T("items.presentaciones")</label>
+                    <span class="hint">@T("items.presentaciones_ayuda")</span>
+                    @foreach (var pres in f.Presentations)
+                    {
+                        <div class="form-row presentation-row">
+                            <input class="control" placeholder="@(T("items.caja"))" @bind="pres.Name" aria-label="@(T("items.nombre"))" />
+                            <input class="control" type="number" min="0" step="any" @bind="pres.Factor" aria-label="@(T("items.factor"))" title="@(T("items.factor"))" />
+                            <input class="control" placeholder="17750000000014" @bind="pres.Barcode" aria-label="@(T("items.codigo_de_barras"))" />
+                            <button class="btn btn-ghost icon-btn sm" @onclick="() => f.Presentations.Remove(pres)" aria-label="@(T("items.quitar"))"><Icon Name="x" Size="16" /></button>
+                        </div>
+                    }
+                    <button class="btn btn-ghost sm" @onclick="() => f.Presentations.Add(new PresentationForm())"><Icon Name="plus" Size="16" />@T("items.agregar_presentacion")</button>
+                </div>
+            }
         </ChildContent>
         <Footer>
             <button class="btn" @onclick="Close">@T("items.cancelar")</button>
@@ -226,7 +267,28 @@
         public string? Description { get; set; }
         public bool TrackInventory { get; set; } = true;
         public bool IsActive { get; set; } = true;
+        public string? UnitCode { get; set; }
+        public decimal? WeightKg { get; set; }
+        public string Tracking { get; set; } = ItemTrackings.None;
+        public List<PresentationForm> Presentations { get; set; } = [];
     }
+
+    private sealed class PresentationForm
+    {
+        public string? Code { get; set; }
+        public string Name { get; set; } = "";
+        public decimal Factor { get; set; } = 12;
+        public string? Barcode { get; set; }
+        public string? UnitCode { get; set; }
+
+        /// <summary>Sin código propio, se deriva del nombre (Caja × 12 → CAJA-12).</summary>
+        public ItemPresentation ToPresentation() => new(
+            string.IsNullOrWhiteSpace(Code) ? $"{new string(Name.Where(char.IsLetter).Take(8).ToArray())}-{Factor:0.##}" : Code,
+            Name, Factor, Barcode, UnitCode);
+    }
+
+    /// <summary>Códigos UN/ECE más usados (Tabla 6 de SUNAT).</summary>
+    private static readonly string[] UnitCodes = ["NIU", "ZZ", "BX", "PK", "DZN", "KGM", "GRM", "LTR", "MLT", "MTR", "PR", "SET"];
 
     private static readonly string[] Units = ["unidad", "caja", "paquete", "docena", "kg", "g", "litro", "ml", "metro", "par", "servicio"];
     private static readonly string[] Currencies = ["PEN", "USD"];
@@ -280,6 +342,11 @@
                 Id = item.Id, Kind = item.Kind, Sku = item.Sku, Name = item.Name, Barcode = item.Barcode, Category = item.Category,
                 Unit = item.Unit, Price = item.Price, Currency = item.CurrencyCode, TaxCode = item.TaxCode ?? "igv",
                 Description = item.Description, TrackInventory = item.TrackInventory, IsActive = item.IsActive,
+                UnitCode = item.UnitCode, WeightKg = item.WeightKg, Tracking = item.Tracking,
+                Presentations = item.Presentations.Select(p => new PresentationForm
+                {
+                    Code = p.Code, Name = p.Name, Factor = p.Factor, Barcode = p.Barcode, UnitCode = p.UnitCode,
+                }).ToList(),
             };
     }
 
@@ -288,7 +355,8 @@
         if (_form is not { } f)
             return;
         var draft = new ItemDraft(f.Sku, f.Name, f.Unit, f.Category, f.Barcode, f.Price, f.Currency, f.Description,
-            f.Kind == "Product" && f.TrackInventory, f.Kind, f.TaxCode, f.IsActive);
+            f.Kind == "Product" && f.TrackInventory, f.Kind, f.TaxCode, f.IsActive, f.UnitCode, f.WeightKg, f.Tracking,
+            f.Presentations.Where(p => !string.IsNullOrWhiteSpace(p.Name)).Select(p => p.ToPresentation()).ToList());
         _busy = true;
         _error = await TryAsync(async () =>
         {

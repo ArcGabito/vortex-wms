@@ -197,12 +197,12 @@
                             <Avatar Text="@item.Name" Size="34" />
                             <div class="two-line"><span class="t1">@item.Name</span><span class="t2">@T("inventory.stock_actual", item.Sku, (a.Current is { } cur ? Fmt.Qty(cur) : "—"), item.Unit)</span></div>
                         </div>
-                        <button class="btn btn-sm" @onclick="() => { a.Item = null; a.Current = null; }">@T("inventory.cambiar")</button>
+                        <button class="btn btn-sm" @onclick="() => { a.Item = null; a.Current = null; a.Presentation = null; }">@T("inventory.cambiar")</button>
                     </div>
                 }
                 else
                 {
-                    <ItemPicker OnSelected="async i => { a.Item = i; await RefreshCurrentAsync(); }" />
+                    <ItemPicker OnPicked="async scan => { a.Item = scan.Item; a.Presentation = scan.Presentation?.Code; await RefreshCurrentAsync(); }" />
                 }
             </div>
             <div class="segmented">
@@ -214,6 +214,19 @@
                     <label>@(a.IsCount ? T("inventory.cantidad_contada") : T("inventory.diferencia_entra_sale"))</label>
                     <input class="control" type="number" step="any" @bind="a.Quantity" @bind:event="oninput" />
                 </div>
+                @if (a.Item is { Presentations.Count: > 0 } withPresentations)
+                {
+                    <div class="field">
+                        <label>@T("inventory.presentacion")</label>
+                        <select class="select" @bind="a.PresentationValue">
+                            <option value="">@withPresentations.Unit</option>
+                            @foreach (var pres in withPresentations.Presentations)
+                            {
+                                <option value="@pres.Code">@pres.Name</option>
+                            }
+                        </select>
+                    </div>
+                }
                 <div class="field">
                     <label>@T("inventory.resultado")</label>
                     <input class="control" disabled value="@(Preview(a) is { } p ? $"{Fmt.Qty(p)} {a.Item?.Unit}" : "—")" />
@@ -303,6 +316,17 @@
         public string Reason { get; set; } = AdjustmentReasons.Count;
         public string? Note { get; set; }
         public decimal? Current { get; set; }
+
+        /// <summary>Presentación en que se cuenta (3 cajas = 36); null = unidad base.</summary>
+        public string? Presentation { get; set; }
+
+        public string PresentationValue
+        {
+            get => Presentation ?? "";
+            set => Presentation = value == "" ? null : value;
+        }
+
+        public decimal? BaseQuantity => Quantity is { } q && Item is { } item ? item.ToBase(Presentation, q).Quantity : Quantity;
     }
 
     private sealed class TransferForm
@@ -477,13 +501,13 @@
     }
 
     private static decimal? Preview(AdjustForm a) =>
-        a.Quantity is not { } q ? null : a.IsCount ? q : (a.Current ?? 0) + q;
+        a.BaseQuantity is not { } q ? null : a.IsCount ? q : (a.Current ?? 0) + q;
 
     private async Task SaveAdjustAsync()
     {
         if (_adjust is not { } a)
             return;
-        if (a.SiteId is not { } site || a.Item is not { } item || a.Quantity is not { } quantity)
+        if (a.SiteId is not { } site || a.Item is not { } item || a.BaseQuantity is not { } quantity)
         {
             _error = T("inventory.elige_la_sede_el_articulo");
             return;

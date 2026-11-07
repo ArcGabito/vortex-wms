@@ -764,6 +764,9 @@ table.data .strong { font-weight: 700; color: var(--ink); }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+.form-row.presentation-row { grid-template-columns: 2fr 1fr 2fr auto; align-items: center; gap: 8px; }
+.field .hint { font-size: 12px; color: var(--text-3, var(--text-2)); }
+.select.inline { display: inline-block; width: auto; height: 26px; padding: 0 26px 0 8px; margin-left: 6px; font-size: 12px; }
 
 .alert {
     display: flex;

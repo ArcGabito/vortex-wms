@@ -37,7 +37,40 @@ public sealed record PagedResult<T>(IReadOnlyList<T> Items, int Total, int Page,
 public sealed record ItemRow(
     Guid Id, string Sku, string Name, string Kind, string? Description, string Unit, string? Barcode, string? Category,
     decimal Price, string CurrencyCode, string? TaxCode, bool TrackInventory, bool IsActive, int Version, bool Pending,
-    decimal OnHand, decimal Reserved);
+    decimal OnHand, decimal Reserved)
+{
+    /// <summary>Unidad base con código UN/ECE (Tabla 6 de SUNAT): NIU, KGM, BX…</summary>
+    public string? UnitCode { get; init; }
+    public decimal? WeightKg { get; init; }
+
+    /// <summary><c>None</c>, <c>Lot</c> o <c>Serial</c> (fase 3).</summary>
+    public string Tracking { get; init; } = ItemTrackings.None;
+
+    /// <summary>Presentaciones (caja × 12). El stock siempre se lleva en la unidad base.</summary>
+    public IReadOnlyList<ItemPresentation> Presentations { get; init; } = [];
+
+    public ItemPresentation? PresentationByCode(string? code) => code is null ? null
+        : Presentations.FirstOrDefault(p => string.Equals(p.Code, code, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Pasa una cantidad y un precio o costo de la presentación a la unidad base (2 cajas × 12 = 24).</summary>
+    public (decimal Quantity, decimal? UnitPrice) ToBase(string? presentationCode, decimal quantity, decimal? unitPrice = null) =>
+        PresentationByCode(presentationCode) is { } p
+            ? (quantity * p.Factor, unitPrice is { } price ? decimal.Round(price / p.Factor, 6) : null)
+            : (quantity, unitPrice);
+}
+
+/// <summary>Presentación de un artículo: cuántas unidades base trae y su código de barras (DUN-14, EAN).</summary>
+public sealed record ItemPresentation(string Code, string Name, decimal Factor, string? Barcode = null, string? UnitCode = null);
+
+/// <summary>Resultado de escanear: el artículo y, si el código era el de una presentación, cuál.</summary>
+public sealed record ItemScan(ItemRow Item, ItemPresentation? Presentation);
+
+public static class ItemTrackings
+{
+    public const string None = "None";
+    public const string Lot = "Lot";
+    public const string Serial = "Serial";
+}
 
 public sealed record SiteRow(
     Guid Id, string Code, string Name, string Kind, string? Phone, string? AddressLine, string? City, string? CountryCode,
@@ -59,7 +92,9 @@ public sealed record Option(Guid Id, string Label, string? Detail = null);
 
 public sealed record ItemDraft(
     string Sku, string Name, string Unit, string? Category, string? Barcode, decimal Price, string CurrencyCode,
-    string? Description = null, bool TrackInventory = true, string Kind = "Product", string? TaxCode = "igv", bool IsActive = true);
+    string? Description = null, bool TrackInventory = true, string Kind = "Product", string? TaxCode = "igv", bool IsActive = true,
+    string? UnitCode = null, decimal? WeightKg = null, string Tracking = ItemTrackings.None,
+    IReadOnlyList<ItemPresentation>? Presentations = null);
 
 public sealed record SiteDraft(
     string Code, string Name, string Kind, string? Phone, string? AddressLine, string? City, string CountryCode, bool IsActive = true);
