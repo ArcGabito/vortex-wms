@@ -231,13 +231,13 @@
                 <div class="field">
                     <label>@T("items.presentaciones")</label>
                     <span class="hint">@T("items.presentaciones_ayuda")</span>
-                    @foreach (var p in f.Presentations)
+                    @foreach (var pres in f.Presentations)
                     {
                         <div class="form-row presentation-row">
-                            <input class="control" placeholder="@(T("items.caja"))" @bind="p.Name" aria-label="@(T("items.nombre"))" />
-                            <input class="control" type="number" min="0" step="any" @bind="p.Factor" aria-label="@(T("items.factor"))" title="@(T("items.factor"))" />
-                            <input class="control" placeholder="17750000000014" @bind="p.Barcode" aria-label="@(T("items.codigo_de_barras"))" />
-                            <button class="btn btn-ghost icon-btn sm" @onclick="() => f.Presentations.Remove(p)" aria-label="@(T("items.quitar"))"><Icon Name="x" Size="16" /></button>
+                            <input class="control" placeholder="@(T("items.caja"))" @bind="pres.Name" aria-label="@(T("items.nombre"))" />
+                            <input class="control" type="number" min="0" step="any" @bind="pres.Factor" aria-label="@(T("items.factor"))" title="@(T("items.factor"))" />
+                            <input class="control" placeholder="17750000000014" @bind="pres.Barcode" aria-label="@(T("items.codigo_de_barras"))" />
+                            <button class="btn btn-ghost icon-btn sm" @onclick="() => f.Presentations.Remove(pres)" aria-label="@(T("items.quitar"))"><Icon Name="x" Size="16" /></button>
                         </div>
                     }
                     <button class="btn btn-ghost sm" @onclick="() => f.Presentations.Add(new PresentationForm())"><Icon Name="plus" Size="16" />@T("items.agregar_presentacion")</button>
