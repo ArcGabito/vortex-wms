@@ -1,6 +1,9 @@
-@* Líneas de un documento (recepción, transferencia, pedido): se agregan escaneando o buscando el artículo. *@
+@*
+    Líneas de un documento (recepción, transferencia, pedido): se agregan escaneando o buscando el artículo. Cada
+    línea puede ir en una presentación (2 cajas × 12); al documento llega siempre en la unidad base (24).
+*@
 <div class="lines">
-    <ItemPicker OnSelected="AddAsync" />
+    <ItemPicker OnPicked="AddAsync" />
     @if (Lines.Count > 0)
     {
         <div class="line @(ShowPrice ? "with-price" : "")" style="background:transparent;padding-top:0;padding-bottom:0">
@@ -15,16 +18,31 @@
     }
     @foreach (var line in Lines)
     {
-        <div class="line @(ShowPrice ? "with-price" : "")" @key="line.Item.Id">
+        <div class="line @(ShowPrice ? "with-price" : "")" @key="line">
             <div class="cell-main">
                 <Avatar Text="@line.Item.Name" Size="34" />
                 <div class="two-line">
                     <span class="t1">@line.Item.Name</span>
                     <span class="t2">
                         #@line.Item.Sku · @line.Item.Unit
+                        @if (line.Item.Presentations.Count > 0)
+                        {
+                            <select class="select inline" value="@(line.Presentation ?? "")" aria-label="@(T("lineeditor.presentacion"))"
+                                    @onchange="e => ChangePresentationAsync(line, e.Value?.ToString())">
+                                <option value="">@line.Item.Unit</option>
+                                @foreach (var p in line.Item.Presentations)
+                                {
+                                    <option value="@p.Code">@p.Name</option>
+                                }
+                            </select>
+                            @if (line.Presentation is not null)
+                            {
+                                <span> = @Fmt.Qty(line.BaseQuantity) @line.Item.Unit</span>
+                            }
+                        }
                         @if (line.Available is { } available)
                         {
-                            <span class="@(available < line.Quantity ? "warn-text" : "")"> @T("lineeditor.disponible", Fmt.Qty(available))</span>
+                            <span class="@(available < line.BaseQuantity ? "warn-text" : "")"> @T("lineeditor.disponible", Fmt.Qty(available))</span>
                         }
                     </span>
                 </div>
@@ -47,7 +65,16 @@
         public decimal? Price { get; set; }
         public decimal? Available { get; set; }
 
-        public DocumentLine ToDocumentLine() => new(Item.Id, Quantity, Price);
+        /// <summary>Código de la presentación en que se ingresan cantidad y precio (null = unidad base).</summary>
+        public string? Presentation { get; set; }
+
+        public decimal BaseQuantity => Item.ToBase(Presentation, Quantity).Quantity;
+
+        public DocumentLine ToDocumentLine()
+        {
+            var (quantity, price) = Item.ToBase(Presentation, Quantity, Price);
+            return new(Item.Id, quantity, price);
+        }
     }
 
     [Parameter, EditorRequired] public List<LineDraft> Lines { get; set; } = [];
@@ -63,22 +90,37 @@
     /// <summary>Se avisa al agregar, quitar o editar una línea, para que el formulario recalcule totales y botones.</summary>
     [Parameter] public EventCallback Changed { get; set; }
 
-    private async Task AddAsync(ItemRow item)
+    private async Task AddAsync(ItemScan scan)
     {
-        if (Lines.FirstOrDefault(l => l.Item.Id == item.Id) is { } existing)
+        var (item, presentation) = (scan.Item, scan.Presentation?.Code);
+        if (Lines.FirstOrDefault(l => l.Item.Id == item.Id && l.Presentation == presentation) is { } existing)
         {
             existing.Quantity += 1;
         }
         else
         {
+            var price = DefaultPrice?.Invoke(item);
             Lines.Add(new LineDraft
             {
                 Item = item,
-                Price = DefaultPrice?.Invoke(item),
+                Presentation = presentation,
+                Price = price is { } p && scan.Presentation is { } pres ? p * pres.Factor : price,
                 Available = AvailableFor is null ? null : await AvailableFor(item),
             });
         }
         await NotifyAsync();
+    }
+
+    /// <summary>Cambia la presentación de la línea manteniendo el precio por unidad base.</summary>
+    private Task ChangePresentationAsync(LineDraft line, string? code)
+    {
+        var next = string.IsNullOrEmpty(code) ? null : code;
+        var oldFactor = line.Item.PresentationByCode(line.Presentation)?.Factor ?? 1;
+        var newFactor = line.Item.PresentationByCode(next)?.Factor ?? 1;
+        if (line.Price is { } price)
+            line.Price = decimal.Round(price / oldFactor * newFactor, 4);
+        line.Presentation = next;
+        return NotifyAsync();
     }
 
     private Task RemoveAsync(LineDraft line)

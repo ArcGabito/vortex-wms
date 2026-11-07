@@ -115,6 +115,12 @@ por caja; la GRE pide peso), así que se proponen como campos de `item`. Vida ú
 **Terminado cuando:** recibir 2 cajas × 12 suma 24 unidades; escanear el DUN-14 elige la presentación caja; todo
 funciona sin conexión.
 
+**Estado (2026-11):** hecha en su parte de artículos y escaneo con lector (hub #25). Presentaciones, códigos de
+unidad UN/ECE, peso y control lote/serie viven en el `item` del hub (decisión 4); el WMS indexa todos los códigos en
+`item_barcodes` para escanear sin conexión, y recepciones, transferencias, pedidos y conteos se ingresan en
+cualquier presentación. Pruebas en `PresentationTests`. **Pendiente:** escaneo con cámara (Android/iOS), volumen,
+vida útil y días mínimos al recibir (estos dos se hacen con la fase 3, donde se usan).
+
 ## Fase 3: lotes, vencimientos y series · L
 
 **Objetivo:** abrir rubros que hoy no pueden usar el WMS: farmacia, alimentos, cosmética, electrónica.

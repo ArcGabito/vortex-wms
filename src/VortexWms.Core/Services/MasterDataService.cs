@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.Data.Sqlite;
 using VortexApi.Client;
@@ -25,20 +27,27 @@ public sealed partial class MasterDataService(WmsDatabase db, IWmsContext contex
         await using var c = await Db.OpenAsync(ct);
         await c.ExecAsync("""
             INSERT INTO items (id, sku, name, kind, description, unit, barcode, category, price, currency_code, tax_code,
-                               track_inventory, is_active, version, is_deleted, pending, updated_at)
+                               track_inventory, is_active, version, is_deleted, pending, updated_at, unit_code, weight_kg,
+                               tracking, presentations)
             VALUES ($id, $sku, $name, $kind, $desc, $unit, $barcode, $category, $price, $currency, $tax, $track, $active,
-                    $version, $deleted, 0, $updated)
+                    $version, $deleted, 0, $updated, $unitCode, $weight, $tracking, $presentations)
             ON CONFLICT (id) DO UPDATE SET
                 sku = excluded.sku, name = excluded.name, kind = excluded.kind, description = excluded.description,
                 unit = excluded.unit, barcode = excluded.barcode, category = excluded.category, price = excluded.price,
                 currency_code = excluded.currency_code, tax_code = excluded.tax_code,
                 track_inventory = excluded.track_inventory, is_active = excluded.is_active, version = excluded.version,
-                is_deleted = excluded.is_deleted, pending = 0, updated_at = excluded.updated_at
+                is_deleted = excluded.is_deleted, pending = 0, updated_at = excluded.updated_at,
+                unit_code = excluded.unit_code, weight_kg = excluded.weight_kg, tracking = excluded.tracking,
+                presentations = excluded.presentations
             WHERE excluded.version > items.version
             """, null, ("$id", change.EntityId), ("$sku", d.Sku), ("$name", d.Name), ("$kind", d.Kind), ("$desc", d.Description),
             ("$unit", d.Unit), ("$barcode", d.Barcode), ("$category", d.Category), ("$price", d.Price),
             ("$currency", d.CurrencyCode), ("$tax", d.TaxCode), ("$track", d.TrackInventory), ("$active", d.IsActive),
-            ("$version", change.Version), ("$deleted", Deleted(change.Operation, d.Meta)), ("$updated", d.Meta.UpdatedAt));
+            ("$version", change.Version), ("$deleted", Deleted(change.Operation, d.Meta)), ("$updated", d.Meta.UpdatedAt),
+            ("$unitCode", d.UnitCode), ("$weight", d.WeightKg?.ToString(CultureInfo.InvariantCulture)),
+            ("$tracking", d.Tracking ?? ItemTrackings.None),
+            ("$presentations", PresentationsJson(d.Presentations?.Select(p => new ItemPresentation(p.Code, p.Name, p.Factor, p.Barcode, p.UnitCode)))));
+        await RebuildBarcodesAsync(c, null, change.EntityId);
     }
 
     public async Task ApplySiteAsync(VortexMasterChange<VortexSite> change, CancellationToken ct = default)
@@ -116,6 +125,7 @@ public sealed partial class MasterDataService(WmsDatabase db, IWmsContext contex
         Require(!string.IsNullOrWhiteSpace(draft.Unit), T("error.la_unidad_es_obligatoria"));
         Require(draft.Price >= 0, T("error.el_precio_no_puede_ser"));
         Require(draft.CurrencyCode.Trim().Length == 3, T("error.la_moneda_debe_ser_un"));
+        var presentations = NormalizePresentations(draft);
 
         return InTransactionAsync(async (c, tx, now) =>
         {
@@ -123,6 +133,16 @@ public sealed partial class MasterDataService(WmsDatabase db, IWmsContext contex
                 "SELECT COUNT(*) FROM items WHERE sku = $sku AND is_deleted = 0 AND id <> $id", tx,
                 ("$sku", sku), ("$id", existingId ?? Guid.Empty));
             Require(duplicate == 0, T("error.ya_existe_un_articulo_con", sku));
+
+            // Al escanear, un código debe llevar a un solo artículo.
+            foreach (var code in presentations.Select(p => p.Barcode).Append(Clean(draft.Barcode)).OfType<string>())
+            {
+                var other = await c.ScalarAsync<string?>("""
+                    SELECT i.sku FROM item_barcodes b JOIN items i ON i.id = b.item_id
+                    WHERE b.barcode = $code AND i.id <> $id AND i.is_deleted = 0 LIMIT 1
+                    """, tx, ("$code", code), ("$id", existingId ?? Guid.Empty));
+                Require(other is null, T("error.codigo_de_barras_en_uso", code, other));
+            }
 
             var id = existingId ?? Guid.NewGuid();
             var version = existingId is null ? 0 : await c.ScalarAsync<int>("SELECT version FROM items WHERE id = $id", tx, ("$id", id));
@@ -132,20 +152,28 @@ public sealed partial class MasterDataService(WmsDatabase db, IWmsContext contex
                 barcode = Clean(draft.Barcode), category = Clean(draft.Category), price = draft.Price,
                 currencyCode = draft.CurrencyCode.Trim().ToUpperInvariant(), taxCode = VortexApi.Suite.Taxes.TaxCategories.Normalize(draft.TaxCode),
                 trackInventory = draft.Kind == "Product" && draft.TrackInventory, isActive = draft.IsActive,
+                unitCode = Clean(draft.UnitCode)?.ToUpperInvariant(), weightKg = draft.WeightKg,
+                tracking = draft.Kind == "Product" && draft.TrackInventory ? draft.Tracking : ItemTrackings.None,
+                presentations,
             };
 
             await c.ExecAsync("""
                 INSERT INTO items (id, sku, name, kind, description, unit, barcode, category, price, currency_code, tax_code,
-                                   track_inventory, is_active, version, is_deleted, pending, updated_at)
+                                   track_inventory, is_active, version, is_deleted, pending, updated_at, unit_code, weight_kg,
+                                   tracking, presentations)
                 VALUES ($id, $sku, $name, $kind, $desc, $unit, $barcode, $category, $price, $currency, $tax, $track, $active,
-                        0, 0, 1, $now)
+                        0, 0, 1, $now, $unitCode, $weight, $tracking, $presentations)
                 ON CONFLICT (id) DO UPDATE SET sku = $sku, name = $name, kind = $kind, description = $desc, unit = $unit,
                     barcode = $barcode, category = $category, price = $price, currency_code = $currency, tax_code = $tax,
-                    track_inventory = $track, is_active = $active, pending = 1, updated_at = $now
+                    track_inventory = $track, is_active = $active, pending = 1, updated_at = $now, unit_code = $unitCode,
+                    weight_kg = $weight, tracking = $tracking, presentations = $presentations
                 """, tx, ("$id", id), ("$sku", body.sku), ("$name", body.name), ("$kind", body.kind), ("$desc", body.description),
                 ("$unit", body.unit), ("$barcode", body.barcode), ("$category", body.category), ("$price", body.price),
                 ("$currency", body.currencyCode), ("$tax", body.taxCode), ("$track", body.trackInventory),
-                ("$active", body.isActive), ("$now", now));
+                ("$active", body.isActive), ("$now", now), ("$unitCode", body.unitCode),
+                ("$weight", body.weightKg?.ToString(CultureInfo.InvariantCulture)), ("$tracking", body.tracking),
+                ("$presentations", PresentationsJson(presentations)));
+            await RebuildBarcodesAsync(c, tx, id);
 
             await Outbox.EnqueueUpsertAsync(c, tx, now, VortexMasterResource.Items, id, body, version > 0 ? version : null);
             return id;
@@ -232,7 +260,8 @@ public sealed partial class MasterDataService(WmsDatabase db, IWmsContext contex
         await using var c = await Db.OpenAsync(ct);
         const string where = """
             WHERE i.is_deleted = 0 AND ($all = 1 OR i.is_active = 1)
-              AND ($search IS NULL OR i.sku LIKE $like OR i.name LIKE $like OR i.barcode = $search)
+              AND ($search IS NULL OR i.sku LIKE $like OR i.name LIKE $like
+                   OR i.id IN (SELECT item_id FROM item_barcodes WHERE barcode = $search))
               AND ($category IS NULL OR i.category = $category)
             """;
         var args = new (string, object?)[]
@@ -328,7 +357,68 @@ public sealed partial class MasterDataService(WmsDatabase db, IWmsContext contex
         r.Guid("id"), r.Str("sku"), r.Str("name"), r.Str("kind"), r.StrOrNull("description"), r.Str("unit"),
         r.StrOrNull("barcode"), r.StrOrNull("category"), r.Dec("price"), r.Str("currency_code"), r.StrOrNull("tax_code"),
         r.Bool("track_inventory"), r.Bool("is_active"), r.Int("version"), r.Bool("pending"), r.Dec("total_on_hand"),
-        r.Dec("total_reserved"));
+        r.Dec("total_reserved"))
+    {
+        UnitCode = r.StrOrNull("unit_code"),
+        WeightKg = r.DecOrNull("weight_kg"),
+        Tracking = r.StrOrNull("tracking") ?? ItemTrackings.None,
+        Presentations = r.StrOrNull("presentations") is { } json
+            ? JsonSerializer.Deserialize<List<ItemPresentation>>(json, VortexJson.Options) ?? []
+            : [],
+    };
+
+    // ---------- Presentaciones y códigos de barras ----------
+
+    /// <summary>
+    /// Busca por código exacto (de la unidad o de una presentación) o por SKU. Si el código es el de una presentación,
+    /// la devuelve para que la línea se registre en esa presentación (escanear la caja = 1 caja).
+    /// </summary>
+    public async Task<ItemScan?> ScanAsync(string code, CancellationToken ct = default)
+    {
+        var term = Clean(code);
+        if (term is null)
+            return null;
+        await using var c = await Db.OpenAsync(ct);
+        var hits = await c.QueryAsync("""
+            SELECT b.item_id, b.presentation_code FROM item_barcodes b JOIN items i ON i.id = b.item_id
+            WHERE b.barcode = $code AND i.is_deleted = 0
+            UNION ALL
+            SELECT id, NULL FROM items WHERE sku = $sku AND is_deleted = 0
+            """, r => (Id: r.Guid("item_id"), Presentation: r.StrOrNull("presentation_code")), null,
+            ("$code", term), ("$sku", term.ToUpperInvariant()));
+        if (hits.Count == 0 || await GetItemAsync(hits[0].Id, ct) is not { } item)
+            return null;
+        return new ItemScan(item, item.PresentationByCode(hits[0].Presentation));
+    }
+
+    private static List<ItemPresentation> NormalizePresentations(ItemDraft draft)
+    {
+        var list = (draft.Presentations ?? []).Select(p => new ItemPresentation(
+            p.Code.Trim().ToUpperInvariant(), p.Name.Trim(), p.Factor, Clean(p.Barcode), Clean(p.UnitCode)?.ToUpperInvariant())).ToList();
+        foreach (var p in list)
+        {
+            Require(p.Code.Length > 0 && p.Name.Length > 0, T("error.la_presentacion_necesita_codigo"));
+            Require(p.Factor > 0, T("error.el_factor_debe_ser_mayor"));
+        }
+        Require(list.Select(p => p.Code).Distinct().Count() == list.Count, T("error.presentacion_repetida"));
+        var codes = list.Select(p => p.Barcode).Append(Clean(draft.Barcode)).OfType<string>().ToList();
+        Require(codes.Distinct().Count() == codes.Count, T("error.codigo_de_barras_repetido"));
+        return list;
+    }
+
+    private static string? PresentationsJson(IEnumerable<ItemPresentation>? presentations) =>
+        presentations?.ToList() is { Count: > 0 } list ? JsonSerializer.Serialize(list, VortexJson.Options) : null;
+
+    /// <summary>Reconstruye el índice de códigos del artículo (unidad y presentaciones) desde su fila.</summary>
+    private static Task RebuildBarcodesAsync(SqliteConnection c, SqliteTransaction? tx, Guid itemId) => c.ExecAsync("""
+        DELETE FROM item_barcodes WHERE item_id = $id;
+        INSERT OR IGNORE INTO item_barcodes (barcode, item_id, presentation_code)
+        SELECT barcode, id, NULL FROM items WHERE id = $id AND barcode IS NOT NULL AND barcode <> ''
+        UNION ALL
+        SELECT json_extract(p.value, '$.barcode'), i.id, json_extract(p.value, '$.code')
+        FROM items i, json_each(COALESCE(i.presentations, '[]')) p
+        WHERE i.id = $id AND json_extract(p.value, '$.barcode') IS NOT NULL;
+        """, tx, ("$id", itemId));
 
     private static PartyRow ReadParty(SqliteDataReader r) => new(
         r.Guid("id"), r.Str("name"), r.StrOrNull("trade_name"), r.Str("kind"), r.StrOrNull("document_type"),

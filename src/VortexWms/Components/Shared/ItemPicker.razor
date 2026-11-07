@@ -3,7 +3,8 @@
 @inject IJSRuntime JS
 @*
     Buscador de artículos por SKU, nombre o código de barras. Funciona con lectores de código de barras que escriben
-    el código y envían Enter: si hay una coincidencia exacta, la elige sola.
+    el código y envían Enter: si hay una coincidencia exacta, la elige sola. Si el código es el de una presentación
+    (DUN-14 de la caja), avisa también la presentación en OnPicked.
 *@
 <div class="picker">
     <div class="input-icon" @ref="_anchor">
@@ -32,6 +33,9 @@
 @code {
     [Parameter] public string Placeholder { get; set; } = T("itempicker.escanea_busca_por_sku_nombre");
     [Parameter] public EventCallback<ItemRow> OnSelected { get; set; }
+
+    /// <summary>Como OnSelected, pero con la presentación escaneada (null = unidad base).</summary>
+    [Parameter] public EventCallback<ItemScan> OnPicked { get; set; }
 
     private ElementReference _anchor, _input;
     private string _term = "";
@@ -83,21 +87,25 @@
             case "Enter":
                 _debounce?.Cancel();
                 await SearchAsync();
-                var term = _term.Trim();
-                var exact = _results.FirstOrDefault(i => i.Barcode == term || string.Equals(i.Sku, term, StringComparison.OrdinalIgnoreCase));
-                var pick = exact ?? (_results.Count == 1 ? _results[0] : _open && _highlight < _results.Count ? _results[_highlight] : null);
+                if (Session.Workspace is { } wms && await wms.Master.ScanAsync(_term) is { Item.TrackInventory: true } scan)
+                {
+                    await SelectAsync(scan.Item, scan.Presentation);
+                    break;
+                }
+                var pick = _results.Count == 1 ? _results[0] : _open && _highlight < _results.Count ? _results[_highlight] : null;
                 if (pick is not null)
                     await SelectAsync(pick);
                 break;
         }
     }
 
-    private async Task SelectAsync(ItemRow item)
+    private async Task SelectAsync(ItemRow item, ItemPresentation? presentation = null)
     {
         _term = "";
         _results = [];
         _open = false;
         await OnSelected.InvokeAsync(item);
+        await OnPicked.InvokeAsync(new ItemScan(item, presentation));
         await JS.InvokeVoidAsync("vortex.focus", _input);
     }
 

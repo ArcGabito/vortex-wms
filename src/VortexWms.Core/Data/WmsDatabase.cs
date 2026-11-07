@@ -166,5 +166,18 @@ internal static class Schema
             WHEN kind = 'adjustment' AND reason IN ('damage', 'loss') THEN '13'
             WHEN kind = 'adjustment' THEN '28' ELSE '99' END;
         """,
+        // 5: fase 2, artículos de almacén (campos del hub). presentations: JSON [{code,name,factor,barcode,unitCode}].
+        // item_barcodes: índice de todos los códigos de un artículo (unidad y presentaciones) para el escaneo; se
+        // reconstruye desde items cada vez que el artículo cambia.
+        """
+        ALTER TABLE items ADD COLUMN unit_code TEXT;
+        ALTER TABLE items ADD COLUMN weight_kg TEXT;
+        ALTER TABLE items ADD COLUMN tracking TEXT NOT NULL DEFAULT 'None';
+        ALTER TABLE items ADD COLUMN presentations TEXT;
+        CREATE TABLE item_barcodes (
+            barcode TEXT NOT NULL, item_id TEXT NOT NULL, presentation_code TEXT, PRIMARY KEY (barcode, item_id));
+        CREATE INDEX ix_item_barcodes_item ON item_barcodes (item_id);
+        INSERT INTO item_barcodes (barcode, item_id) SELECT barcode, id FROM items WHERE barcode IS NOT NULL AND barcode <> '';
+        """,
     ];
 }
