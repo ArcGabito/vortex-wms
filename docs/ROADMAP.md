@@ -1,7 +1,7 @@
 # Hoja de ruta
 
-Plan para que Vortex WMS pase de gestor de stock multisede a un WMS que compita en el mercado (pymes y medianas
-empresas de Perú, LATAM, EE. UU. y Europa). Va por fases en el orden en que conviene construirlas: cada una se apoya en la
+Guía para que Vortex WMS pase de gestor de stock multisede a un WMS empresarial que compita con Manhattan, SAP EWM,
+Odoo Inventory y Fishbowl (pymes y medianas empresas de Perú, LATAM, EE. UU. y Europa). Va por fases en el orden en que conviene construirlas: cada una se apoya en la
 anterior. **Lo fiscal y tributario (GRE, PLE) queda para el final**, pero desde la fase 1 se guardan los datos que
 necesitará, para que entonces sea una exportación y no un rediseño.
 
@@ -15,19 +15,124 @@ Los tamaños (S, M, L, XL) son relativos entre fases y se vuelven a estimar al e
 > La interfaz ya está en español, inglés y portugués, con selector en Configuración → Este equipo, y los mensajes de
 > validación también salen en ese idioma.
 
-## Dónde estamos (0.1.0)
+Cómo usarla:
 
-| Área | Hoy | Falta para competir |
-|---|---|---|
-| Stock | Por sede, reservas, stock mínimo, kardex inmutable, ajustes con motivo, transferencias | Costo, lotes, series, stock por ubicación |
-| Entradas | Recepciones de OC del ERP y directas, con diferencias | Guardado guiado, presentaciones (cajas) |
-| Salidas | Pedidos del ERP/CRM/WMS, preparación y despacho; ventas del POS | Picking guiado, empaque, despachos parciales |
-| Control | Ajuste por conteo de un artículo a la vez | Conteos cíclicos, aprobación de diferencias |
-| Artículos | Un código de barras y una unidad; lector en modo teclado | Varias presentaciones y códigos, cámara |
-| Valor | A **precio de venta** (`InventoryService.cs`, `StockValue`) | Costo promedio y kardex valorizado |
-| Usuarios | Login del hub; todos pueden hacer todo | Roles y sedes por usuario |
-| Reportes | Panel y exportación CSV | Rotación, ABC, vencimientos, etiquetas |
-| Fiscal | Nada | GRE, PLE 13.1 / 12.1 (fase 8) |
+1. **Requisitos empresariales** es la lista de lo que debe tener el WMS. Cada requisito tiene un código (`WMS-xx`),
+   su estado y la fase que lo cubre.
+2. **Fases** dice en qué orden se construyen, qué datos y eventos necesitan y cuándo se dan por terminadas.
+3. Al cerrar una fase se actualiza su **Estado** y el de sus requisitos, y se anota en el `CHANGELOG`.
+
+## Requisitos empresariales
+
+Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y **Pendiente**.
+
+### Stock y costo
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-01 | Stock por sede con reservas, mínimo y kardex inmutable | Hecho | — |
+| WMS-02 | Ajustes con motivo y transferencias entre sedes | Hecho | — |
+| WMS-03 | Costo promedio ponderado y kardex valorizado | Hecho | 1 |
+| WMS-04 | Valor del inventario a costo, costo de lo vendido y margen | Hecho | 1 |
+| WMS-05 | Tipo de operación SUNAT (Tabla 12) en cada movimiento | Hecho | 1 |
+| WMS-06 | Transferencias en tránsito con diferencias al llegar | Pendiente | 7 |
+
+### Artículos
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-10 | Presentaciones con factor y varios códigos de barras (EAN, DUN-14) | Hecho | 2 |
+| WMS-11 | Peso, unidad UN/ECE y control por lote o serie | Hecho | 2 |
+| WMS-12 | Escaneo con la cámara en Android e iOS | Pendiente | 2 |
+| WMS-13 | Volumen, vida útil y días mínimos de vida al recibir | Pendiente | 3 |
+| WMS-14 | Kits y ensamblado (armar y desarmar con su costo) | Pendiente | 9 |
+
+### Lotes y series
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-20 | Stock por lote con vencimiento | Pendiente | 3 |
+| WMS-21 | FEFO en picking y despacho | Pendiente | 3 |
+| WMS-22 | Estados de lote (disponible, cuarentena, bloqueado) y alertas de vencimiento | Pendiente | 3 |
+| WMS-23 | Series por unidad al recibir y despachar | Pendiente | 3 |
+| WMS-24 | Trazabilidad hacia proveedores y clientes para retiros del mercado | Pendiente | 3 |
+
+### Entradas
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-30 | Recepciones de OC del ERP y directas, con diferencias | Hecho | — |
+| WMS-31 | Recepción en cualquier presentación | Hecho | 2 |
+| WMS-32 | Guardado guiado con ubicación sugerida | Pendiente | 4a |
+| WMS-33 | Aviso anticipado de envío (ASN) del proveedor | Pendiente | 9 |
+| WMS-34 | Citas de muelle para recepción y despacho | Pendiente | 9 |
+| WMS-35 | Cross-docking (de la recepción al despacho sin almacenar) | Pendiente | 9 |
+
+### Ubicaciones
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-40 | Ubicación por artículo en texto libre | Hecho | — |
+| WMS-41 | Mapa de ubicaciones (zona, pasillo, rack, nivel, posición) con código escaneable | Pendiente | 4a |
+| WMS-42 | Stock por ubicación y traslados internos | Pendiente | 4a |
+| WMS-43 | Reabastecimiento de ubicaciones de picking | Pendiente | 4b |
+| WMS-44 | Ubicación óptima según rotación (slotting) | Pendiente | 9 |
+
+### Salidas
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-50 | Pedidos del ERP, CRM y WMS; preparación y despacho; ventas del POS | Hecho | — |
+| WMS-51 | Picking guiado por pedido y por grupo, con recorrido ordenado | Pendiente | 4b |
+| WMS-52 | Olas de picking planificadas por transportista u hora de corte | Pendiente | 9 |
+| WMS-53 | Despacho parcial con saldo pendiente | Pendiente | 4b |
+| WMS-54 | Empaque en bultos con peso y contenido | Pendiente | 4b |
+| WMS-55 | Integración con transportistas (tarifa, etiqueta y seguimiento) | Pendiente | 9 |
+
+### Control de inventario
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-60 | Ajuste por conteo de un artículo | Hecho | — |
+| WMS-61 | Conteo cíclico programado por ubicación o clase ABC | Pendiente | 5 |
+| WMS-62 | Conteo ciego, recuento automático e inventario general | Pendiente | 5 |
+| WMS-63 | Aprobación de diferencias y exactitud de inventario | Pendiente | 5 |
+| WMS-64 | Devoluciones de clientes y a proveedores; mermas con foto y aprobación | Pendiente | 5 |
+
+### Operación con varias personas
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-70 | Varios equipos sin duplicar stock (Ids deterministas, conflictos visibles) | Hecho | 0 |
+| WMS-71 | Roles (`operario`, `supervisor`, `consulta`, `administrador`) validados en Core | Hecho | 0 |
+| WMS-72 | Sedes por usuario | Hecho | 0 |
+| WMS-73 | Auditoría de ajustes, recepciones anuladas y pedidos cancelados | Hecho | 0 |
+| WMS-74 | Cola de tareas por operario asignada por el supervisor | Pendiente | 4b |
+| WMS-75 | Productividad por operario | Pendiente | 6 |
+
+### Abastecimiento, reportes y etiquetas
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-80 | Mínimo y máximo por sede, consumo promedio y cobertura | Parcial: mínimo por artículo | 6 |
+| WMS-81 | Sugerencia de compra que llega al ERP | Pendiente | 6 |
+| WMS-82 | Rotación, ABC, antigüedad, por vencer, sin movimiento y comparativo entre sedes | Pendiente | 6 |
+| WMS-83 | Exportación a Excel, CSV y PDF | Parcial: CSV | 6 |
+| WMS-84 | Etiquetas de artículo, ubicación y bulto (ZPL y PDF) | Pendiente | 6 |
+
+### Canales, 3PL y fiscal
+
+| # | Requisito | Estado | Fase |
+|---|---|---|---|
+| WMS-90 | Tiendas en línea vía conectores del hub | Pendiente | 7 |
+| WMS-91 | Varios propietarios del stock (3PL) y cobro de almacenaje | Pendiente | 9 |
+| WMS-92 | Guía de remisión electrónica (Perú) y equivalentes por país | Pendiente | 8 |
+| WMS-93 | PLE 13.1 y 12.1 | Pendiente | 8 |
+
+## Dónde estamos (2026-11)
+
+Fases 0, 1 y 2 hechas (salvo el escaneo con cámara de la fase 2). Lo siguiente es la fase 3 (lotes, vencimientos y
+series), que abre farmacia, alimentos, cosmética y electrónica.
 
 ## Reglas que el plan respeta
 
@@ -220,6 +325,27 @@ parcial) pasa con dos equipos.
   electrónica en Colombia, guía de despacho electrónica (DTE 52) en Chile; en EE. UU. y la UE, documentos de envío
   y declaraciones de inventario según el país (Intrastat en la UE).
 
+## Fase 9: operación avanzada y 3PL · L
+
+**Objetivo:** atender centros de distribución con mucho volumen y operadores logísticos que guardan stock de
+terceros.
+
+- **ASN y citas de muelle** (WMS-33, WMS-34): el proveedor avisa qué envía y cuándo; la recepción se agenda por muelle
+  y se recibe contra el aviso.
+- **Cross-docking** (WMS-35): lo recibido para un pedido pendiente va directo a despacho.
+- **Olas de picking** (WMS-52) por transportista u hora de corte, y **slotting** (WMS-44): sugerir la ubicación de
+  cada artículo según su rotación.
+- **Kits y ensamblado** (WMS-14): armar y desarmar con el costo de sus componentes.
+- **Transportistas** (WMS-55): tarifa, etiqueta y número de seguimiento al despachar, vía integraciones del hub.
+- **3PL** (WMS-91): el stock tiene propietario; cada cliente del operador ve solo lo suyo y el almacenaje se cobra por
+  posición, volumen o movimiento (el ERP factura con los datos del WMS).
+
+**Hub:** `asn.created`; `trackingNumber` y `carrier` en `shipment.dispatched`; propietario del stock en los eventos de
+stock (aditivos).
+
+**Terminado cuando:** una recepción contra ASN marca las diferencias; un pedido de un cliente 3PL no puede tomar stock
+de otro propietario.
+
 ## Propuestas al hub
 
 Conviene enviar las de cada fase juntas, antes de empezarla.
@@ -238,6 +364,9 @@ Conviene enviar las de cada fase juntas, antes de empezarla.
 | `purchase.requested` | Evento | 6 |
 | `quantityAvailable` en `stock.adjusted` | Campo aditivo | 7 |
 | Ubigeo en direcciones | Campo de `site` y `party` | 8 |
+| `asn.created` | Evento | 9 |
+| `trackingNumber` y `carrier` en `shipment.dispatched` | Campos aditivos | 9 |
+| Propietario del stock (3PL) en los eventos de stock | Campo aditivo | 9 |
 
 ## Decisiones pendientes
 
@@ -250,6 +379,7 @@ Conviene enviar las de cada fase juntas, antes de empezarla.
 | 5 | Planes comerciales | `lotes` y `ubicaciones` como `features` del hub, para vender un plan básico y uno avanzado | Fase 3 |
 | 6 | Versión web | Después de 1.0 | Fase 7 |
 | 7 | Quién emite la GRE | Se decide al empezar la fase 8 | Fase 8 |
+| 8 | 3PL en la misma app o como edición aparte | La misma app con el `feature` `3pl` | Fase 9 |
 
 ## Versiones
 
@@ -264,7 +394,7 @@ Conviene enviar las de cada fase juntas, antes de empezarla.
 | 0.8.0 | Fase 5 |
 | 0.9.0 | Fase 6 |
 | 1.0.0 | Estabilización y piloto con una empresa real |
-| 1.x | Fases 7 y 8 |
+| 1.x | Fases 7, 8 y 9 |
 
 ## Cómo se trabaja cada fase
 
@@ -275,5 +405,6 @@ Conviene enviar las de cada fase juntas, antes de empezarla.
    `DeterministicId`.
 4. **Pruebas:** unitarias y un escenario en `MultiDeviceTests` por cada documento o dato replicado.
 5. **Documentación:** los eventos nuevos o ampliados van en [INTEGRACION.md](INTEGRACION.md); los cambios, en el
-   `CHANGELOG`.
-6. **Pantallas:** se arman con los componentes compartidos y se prueban en Windows y en la vista móvil.
+   `CHANGELOG`; los requisitos cumplidos se marcan en esta guía.
+6. **Pantallas:** se arman con los componentes compartidos, en los tres idiomas, y se prueban en Windows y en la
+   vista móvil.
