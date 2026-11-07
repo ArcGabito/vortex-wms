@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Marca de Vortex WMS: caja isométrica con la cara superior naranja. -->
+<!-- Marca de Vortex WMS: caja isométrica con la cara superior morada. -->
 <svg width="456" height="456" viewBox="0 0 456 456" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <g stroke="#1C120D" stroke-width="10" stroke-linejoin="round">
-        <path d="M228 112 L328 170 L228 228 L128 170 Z" fill="#FF5B14" />
+        <path d="M228 112 L328 170 L228 228 L128 170 Z" fill="#512BD4" />
         <path d="M128 170 L228 228 L228 344 L128 286 Z" fill="#FFFFFF" />
-        <path d="M228 228 L328 170 L328 286 L228 344 Z" fill="#FFC2A3" />
+        <path d="M228 228 L328 170 L328 286 L228 344 Z" fill="#C7B8F5" />
     </g>
     <path d="M178 141 L278 199" stroke="#1C120D" stroke-width="12" stroke-linecap="round" />
 </svg>

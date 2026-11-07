@@ -2,9 +2,9 @@
 <!-- Caja de la marca para la barra de título oscura: las separaciones van en el color de la barra (#1C120D). -->
 <svg width="43" height="43" viewBox="2.5 2.5 43 43" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <g stroke="#1C120D" stroke-width="2" stroke-linejoin="round">
-        <path d="M24 4 L42 14.5 L24 25 L6 14.5 Z" fill="#FF5B14" />
+        <path d="M24 4 L42 14.5 L24 25 L6 14.5 Z" fill="#512BD4" />
         <path d="M6 14.5 L24 25 L24 45 L6 34.5 Z" fill="#FFFFFF" />
-        <path d="M24 25 L42 14.5 L42 34.5 L24 45 Z" fill="#FFC2A3" />
+        <path d="M24 25 L42 14.5 L42 34.5 L24 45 Z" fill="#C7B8F5" />
     </g>
     <path d="M15 9.25 L33 19.75" stroke="#1C120D" stroke-width="2.4" stroke-linecap="round" />
 </svg>

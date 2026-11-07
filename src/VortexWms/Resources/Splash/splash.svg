@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
 <svg width="456" height="456" viewBox="0 0 456 456" version="1.1" xmlns="http://www.w3.org/2000/svg">
     <g stroke="#1C120D" stroke-width="10" stroke-linejoin="round">
-        <path d="M228 60 L368 141 L228 222 L88 141 Z" fill="#FF5B14" />
+        <path d="M228 60 L368 141 L228 222 L88 141 Z" fill="#512BD4" />
         <path d="M88 141 L228 222 L228 396 L88 315 Z" fill="#FFFFFF" />
-        <path d="M228 222 L368 141 L368 315 L228 396 Z" fill="#FFC2A3" />
+        <path d="M228 222 L368 141 L368 315 L228 396 Z" fill="#C7B8F5" />
     </g>
     <path d="M158 100 L298 181" stroke="#1C120D" stroke-width="14" stroke-linecap="round" />
 </svg>
