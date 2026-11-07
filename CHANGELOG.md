@@ -8,6 +8,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **El idioma sigue al usuario:** el que elige en Configuración se guarda en el hub y se usa al entrar en cualquier
+  sistema o equipo de la suite. Sin conexión queda en este equipo.
 - **Fase 2: artículos de almacén.** Presentaciones con factor y código de barras propio (caja × 12, DUN-14), código
   de unidad UN/ECE, peso y control por lote o serie, editables en Artículos y compartidos por el hub. Escanear el
   código de una caja agrega la línea en cajas; recepciones, transferencias, pedidos y conteos se ingresan en
