@@ -56,6 +56,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
   propuestas al hub y las decisiones pendientes.
 
 ### Changed
+- **Morado .NET como color de la suite:** el naranja de la marca (`#FF5B14`) pasa a `#512BD4`, el morado de .NET,
+  en el acento de `app.css`, el logo, el ícono de la app, la pantalla de inicio, la barra de título y Android. La portada
+  del inicio de sesión se muestra en tonos morados con `filter: hue-rotate`. Los colores de estado no cambian.
 - Documentación reorganizada en `docs/`: el README queda como presentación y el detalle pasa a
   `docs/DESCRIPTION.md`; `SISTEMAS.md` y `THIRD-PARTY-NOTICES.md` se movieron a `docs/`.
 - Barra de título de Windows en la tinta de la marca, con botones blancos y la caja del logo junto al nombre.
