@@ -166,7 +166,66 @@ public sealed record MovementRow(
 public sealed record MovementQuery(string? Search = null, Guid? SiteId = null, string? Kind = null, int Page = 1, int PageSize = 15,
     Guid? ItemId = null, DateTimeOffset? From = null, DateTimeOffset? To = null);
 
-public sealed record DocumentLine(Guid ItemId, decimal Quantity, decimal? UnitPrice = null);
+/// <summary>
+/// Línea de un documento. Para artículos con lote, <c>Lots</c> dice de qué lotes (al recibir es obligatorio; al sacar, si
+/// falta, se toma por FEFO). Para artículos con serie, <c>Serials</c> lleva una serie por unidad.
+/// </summary>
+public sealed record DocumentLine(Guid ItemId, decimal Quantity, decimal? UnitPrice = null, IReadOnlyList<LotQuantity>? Lots = null,
+    IReadOnlyList<string>? Serials = null);
+
+/// <summary>Lo recibido de una línea de una recepción esperada, con sus lotes o series.</summary>
+public sealed record ReceivedLine(int LineNo, decimal Quantity, IReadOnlyList<LotQuantity>? Lots = null, IReadOnlyList<string>? Serials = null);
+
+// ---------- Lotes y series ----------
+
+/// <summary>Cantidad de un lote. El vencimiento solo se pide al recibir (al sacar se toma el del lote).</summary>
+public sealed record LotQuantity(string LotCode, decimal Quantity, DateOnly? ExpiresAt = null);
+
+public static class LotStatuses
+{
+    /// <summary>Se puede despachar y vender.</summary>
+    public const string Available = "available";
+
+    /// <summary>En revisión (control de calidad, devolución): no sale hasta liberarse.</summary>
+    public const string Quarantine = "quarantine";
+
+    /// <summary>No sale (retiro del mercado, defecto).</summary>
+    public const string Blocked = "blocked";
+
+    public static readonly string[] All = [Available, Quarantine, Blocked];
+}
+
+/// <summary>Saldo de un lote en una sede. <c>DaysLeft</c>: días para vencer (negativo si ya venció).</summary>
+public sealed record LotRow(
+    Guid SiteId, string SiteName, Guid ItemId, string Sku, string ItemName, string LotCode, DateOnly? ExpiresAt, decimal Quantity,
+    string Status, int? DaysLeft)
+{
+    public bool IsExpired => DaysLeft < 0;
+}
+
+public sealed record LotQuery(
+    Guid? SiteId = null, Guid? ItemId = null, string? Search = null, int? ExpiringWithinDays = null, bool IncludeEmpty = false,
+    int Page = 1, int PageSize = 25);
+
+/// <summary>Una unidad con serie: dónde está (o si ya salió) y de qué lote vino.</summary>
+public sealed record SerialRow(Guid ItemId, string Serial, Guid? SiteId, string? SiteName, string Status, string? LotCode, DateTimeOffset UpdatedAt);
+
+public static class SerialStatuses
+{
+    public const string InStock = "in_stock";
+    public const string Out = "out";
+}
+
+/// <summary>Un paso en la trazabilidad de un lote o serie: el movimiento, su documento y a quién se compró o vendió.</summary>
+public sealed record TraceRow(
+    DateTimeOffset At, string Kind, Guid SiteId, string? SiteName, Guid ItemId, string ItemName, string LotCode, decimal Quantity,
+    string? Reference, Guid? PartyId, string? PartyName);
+
+/// <summary>
+/// Datos de almacén de un artículo que son solo del WMS: vida útil (para sugerir el vencimiento al recibir) y días
+/// mínimos de vida que debe tener un lote para aceptarlo.
+/// </summary>
+public sealed record ItemShelfLife(Guid ItemId, int? ShelfLifeDays, int? MinDaysOnReceipt);
 
 // ---------- Pedidos y despachos ----------
 

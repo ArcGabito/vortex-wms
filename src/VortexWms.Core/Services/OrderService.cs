@@ -154,7 +154,10 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
     /// Despacha el pedido desde <paramref name="siteId"/> (por defecto, la sede del pedido): libera la reserva,
     /// descuenta el stock y publica <c>shipment.dispatched</c>.
     /// </summary>
-    public Task<string> DispatchAsync(Guid orderId, string? carrier, string? trackingNumber, Guid? siteId = null, CancellationToken ct = default)
+    /// <param name="picks">Lotes o series que se despachan por artículo. Sin ellos, los lotes salen por FEFO; elegir otro lote
+    /// requiere permiso. Los artículos con serie necesitan sus series.</param>
+    public Task<string> DispatchAsync(Guid orderId, string? carrier, string? trackingNumber, Guid? siteId = null,
+        IReadOnlyList<DocumentLine>? picks = null, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Dispatch);
         return InTransactionAsync(async (c, tx, now) =>
@@ -185,14 +188,17 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             // stock baja una sola vez. La sede no entra en el Id: si despacharon desde sedes distintas, gana la del hub.
             var shipmentId = DeterministicId.From("shipment", orderId);
             var shipmentNumber = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Shipment, Context.DeviceTag);
+            var dispatched = new Dictionary<Guid, StockLedger.Valued>();
             foreach (var line in perItem)
             {
                 if (order.SiteId != Guid.Empty)
                     await StockLedger.ReserveAsync(c, tx, now, order.SiteId, line.ItemId, -line.Quantity);
+                var pick = InventoryService.Merge((picks ?? []).Where(p => p.ItemId == line.ItemId)).FirstOrDefault();
                 // En perItem, UnitPrice lleva el importe total del artículo en el pedido.
-                await StockLedger.ApplyAsync(c, tx, now, Context.UserName, new StockLedger.Entry(from, line.ItemId, -line.Quantity,
-                        MovementKinds.Shipment, "shipment", orderId, order.Number,
-                        MovementId: DeterministicId.From("shipment_line", orderId, line.ItemId), SaleAmount: line.UnitPrice));
+                dispatched[line.ItemId] = await StockLedger.ApplyValuedAsync(c, tx, now, Context.UserName, new StockLedger.Entry(from, line.ItemId,
+                        -line.Quantity, MovementKinds.Shipment, "shipment", orderId, order.Number,
+                        MovementId: DeterministicId.From("shipment_line", orderId, line.ItemId), SaleAmount: line.UnitPrice,
+                        Lots: pick?.Lots, Serials: pick?.Serials, AllowFefoOverride: Context.Can(WmsPermissions.ManageLots)));
             }
 
             await c.ExecAsync("""
@@ -203,7 +209,9 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
                 ("$tracking", Clean(trackingNumber)), ("$site", from));
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.ShipmentDispatched,
                 new ShipmentDispatched(shipmentId, orderId, order.CustomerId ?? Guid.Empty, Clean(carrier), Clean(trackingNumber),
-                    shipmentNumber, from, lines.Select(l => new QuantityLine(l.ItemId, l.Quantity)).ToList()),
+                    shipmentNumber, from, lines.GroupBy(l => l.ItemId).Select(g => new QuantityLine(g.Key, g.Sum(l => l.Quantity), null, null,
+                        dispatched.GetValueOrDefault(g.Key)?.Lots is { Count: > 0 } lots ? lots.Select(x => x with { Quantity = -x.Quantity }).ToList() : null,
+                        dispatched.GetValueOrDefault(g.Key)?.Serials is { Count: > 0 } s ? s : null)).ToList()),
                 subjectType: "shipment", subjectId: shipmentNumber, id: shipmentId);
             return shipmentNumber;
         }, ct);

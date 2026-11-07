@@ -178,7 +178,7 @@
             <div class="form-row three">
                 <div class="field">
                     <label>@T("orders.sale_de")</label>
-                    <select class="select" value="@dp.SiteId" @onchange="e => dp.SiteId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                    <select class="select" value="@dp.SiteId" @onchange="async e => { dp.SiteId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; await RefreshPicksAsync(dp); }">
                         <option value="">@T("orders.elige_la_sede")</option>
                         @foreach (var site in _sites)
                         {
@@ -196,6 +196,37 @@
                 </div>
             </div>
             <PickList Lines="dp.Lines" ShowStock="dp.SiteId == dp.Order.SiteId" />
+            @if (dp.Picks.Count > 0)
+            {
+                <div class="card-body" style="padding:0;display:flex;flex-direction:column;gap:12px">
+                    <h4 style="font-size:14px">@T("orders.lotes_y_series")</h4>
+                    @foreach (var pick in dp.Picks)
+                    {
+                        <div @key="pick.Item.Id" class="line" style="grid-template-columns:1fr">
+                            <div class="two-line">
+                                <span class="t1">@pick.Item.Name · @Fmt.Qty(pick.Quantity) @pick.Item.Unit</span>
+                                @if (pick.Item.Tracking == ItemTrackings.Lot && !pick.Choose)
+                                {
+                                    <span class="t2">@SuggestionText(pick)</span>
+                                    @if (pick.Suggestion.Sum(s => s.Quantity) < pick.Quantity)
+                                    {
+                                        <span class="t2 warn-text">@T("orders.no_alcanzan_los_lotes")</span>
+                                    }
+                                }
+                            </div>
+                            @if (pick.Item.Tracking == ItemTrackings.Serial || pick.Choose)
+                            {
+                                <TrackingInput Item="pick.Item" Quantity="pick.Quantity" Lots="pick.Lots" @bind-SerialsText="pick.SerialsText"
+                                               Available="pick.AvailableSerials" Changed="StateHasChanged" />
+                            }
+                            else if (Session.Can(WmsPermissions.ManageLots))
+                            {
+                                <button class="link-btn" style="justify-self:start" @onclick="() => pick.Choose = true">@T("orders.elegir_otros_lotes")</button>
+                            }
+                        </div>
+                    }
+                </div>
+            }
             @if (dp.SiteId != dp.Order.SiteId && dp.Order.SiteId != Guid.Empty)
             {
                 <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("orders.se_despachara_desde_otra_sede", dp.Order.SiteName)</span></div>
@@ -243,10 +274,25 @@
         public List<LineEditor.LineDraft> Lines { get; } = [];
     }
 
+    private sealed class TrackedPick(ItemRow item, decimal quantity)
+    {
+        public ItemRow Item { get; } = item;
+        public decimal Quantity { get; } = quantity;
+        public IReadOnlyList<LotQuantity> Suggestion { get; set; } = [];
+        public List<TrackingInput.LotDraft> Lots { get; } = [];
+        public string SerialsText { get; set; } = "";
+        public bool Choose { get; set; }
+        public IReadOnlyList<string> AvailableSerials { get; set; } = [];
+
+        public DocumentLine ToPick() => new(Item.Id, Quantity, null, Choose ? TrackingInput.ToLots(Lots) : null,
+            TrackingInput.Parse(SerialsText) is { Count: > 0 } s ? s : null);
+    }
+
     private sealed class DispatchForm(OrderRow order, IReadOnlyList<OrderLineRow> lines)
     {
         public OrderRow Order { get; } = order;
         public IReadOnlyList<OrderLineRow> Lines { get; } = lines;
+        public List<TrackedPick> Picks { get; } = [];
         public Guid? SiteId { get; set; } = order.SiteId == Guid.Empty ? null : order.SiteId;
         public string? Carrier { get; set; }
         public string? Tracking { get; set; }
@@ -363,7 +409,30 @@
     private async Task OpenDispatch(OrderRow order)
     {
         _error = null;
-        _dispatch = new DispatchForm(order, await Wms.Orders.GetLinesAsync(order.Id));
+        var dispatch = new DispatchForm(order, await Wms.Orders.GetLinesAsync(order.Id));
+        foreach (var group in dispatch.Lines.GroupBy(l => l.ItemId))
+        {
+            if (await Wms.Master.GetItemAsync(group.Key) is { Tracking: not ItemTrackings.None } item)
+                dispatch.Picks.Add(new TrackedPick(item, group.Sum(l => l.Quantity)));
+        }
+        _dispatch = dispatch;
+        await RefreshPicksAsync(dispatch);
+    }
+
+    private static string SuggestionText(TrackedPick pick) => T("orders.fefo_saca", string.Join(", ", pick.Suggestion.Select(s =>
+        (s.LotCode.Length == 0 ? T("orders.sin_lote") : s.LotCode) + " × " + Fmt.Qty(s.Quantity) + (s.ExpiresAt is { } e ? " (" + Fmt.Date(e) + ")" : ""))));
+
+    /// <summary>Sugerencia FEFO y series en stock de la sede desde la que sale.</summary>
+    private async Task RefreshPicksAsync(DispatchForm dp)
+    {
+        if (dp.SiteId is not { } site)
+            return;
+        foreach (var pick in dp.Picks)
+        {
+            pick.Suggestion = await Wms.Lots.SuggestAsync(site, pick.Item.Id, pick.Quantity);
+            pick.AvailableSerials = pick.Item.Tracking == ItemTrackings.Serial
+                ? (await Wms.Lots.GetSerialsAsync(pick.Item.Id, site)).Select(s => s.Serial).ToList() : [];
+        }
     }
 
     private async Task SaveDispatchAsync()
@@ -377,7 +446,8 @@
         }
         _busy = true;
         string? shipment = null;
-        _error = await TryAsync(async () => shipment = await Wms.Orders.DispatchAsync(dp.Order.Id, dp.Carrier, dp.Tracking, site));
+        _error = await TryAsync(async () => shipment = await Wms.Orders.DispatchAsync(dp.Order.Id, dp.Carrier, dp.Tracking, site,
+            dp.Picks.Select(p => p.ToPick()).ToList()));
         _busy = false;
         if (_error is null)
         {

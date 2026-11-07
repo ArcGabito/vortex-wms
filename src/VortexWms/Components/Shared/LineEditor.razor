@@ -53,14 +53,34 @@
             }
             <input class="control" type="number" min="0" step="any" @bind="line.Quantity" @bind:event="oninput" @bind:after="NotifyAsync" aria-label="@(T("lineeditor.cantidad"))" />
             <button class="btn btn-ghost icon-btn sm" @onclick="() => RemoveAsync(line)" aria-label="@(T("lineeditor.quitar"))"><Icon Name="x" Size="16" /></button>
+            @if (Tracking != TrackingMode.None && line.Item.Tracking != ItemTrackings.None)
+            {
+                <div style="grid-column:1 / -1">
+                    @if (Tracking == TrackingMode.Pick && line.Item.Tracking == ItemTrackings.Lot && !line.ChooseLots)
+                    {
+                        <button class="link-btn" @onclick="() => line.ChooseLots = true">@T("lineeditor.elegir_lotes")</button>
+                    }
+                    else
+                    {
+                        <TrackingInput Item="line.Item" Quantity="line.BaseQuantity" Lots="line.Lots" @bind-SerialsText="line.SerialsText"
+                                       WithExpiry="@(Tracking == TrackingMode.Receive)" Available="line.AvailableSerials" Changed="NotifyAsync" />
+                    }
+                </div>
+            }
         </div>
     }
 </div>
 
 @code {
+    public enum TrackingMode { None, Receive, Pick }
+
     public sealed class LineDraft
     {
         public required ItemRow Item { get; init; }
+        public List<TrackingInput.LotDraft> Lots { get; } = [];
+        public string SerialsText { get; set; } = "";
+        public bool ChooseLots { get; set; }
+        public IReadOnlyList<string> AvailableSerials { get; set; } = [];
         public decimal Quantity { get; set; } = 1;
         public decimal? Price { get; set; }
         public decimal? Available { get; set; }
@@ -73,12 +93,20 @@
         public DocumentLine ToDocumentLine()
         {
             var (quantity, price) = Item.ToBase(Presentation, Quantity, Price);
-            return new(Item.Id, quantity, price);
+            var lots = Item.Tracking == ItemTrackings.Lot && (ChooseLots || Lots.Any(l => l.Code.Length > 0)) ? TrackingInput.ToLots(Lots) : null;
+            var serials = Item.Tracking == ItemTrackings.Serial ? TrackingInput.Parse(SerialsText) : [];
+            return new(Item.Id, quantity, price, lots, serials.Count > 0 ? serials : null);
         }
     }
 
     [Parameter, EditorRequired] public List<LineDraft> Lines { get; set; } = [];
     [Parameter] public bool ShowPrice { get; set; }
+
+    /// <summary>Si se capturan lotes y series: al recibir (con vencimiento) o al sacar (FEFO salvo que se elijan).</summary>
+    [Parameter] public TrackingMode Tracking { get; set; }
+
+    /// <summary>Series en stock del artículo en la sede de origen (para elegirlas al sacar).</summary>
+    [Parameter] public Func<ItemRow, Task<IReadOnlyList<string>>>? SerialsFor { get; set; }
     [Parameter] public string PriceLabel { get; set; } = T("lineeditor.precio");
 
     /// <summary>Precio inicial de una línea nueva (p. ej. el precio del artículo).</summary>
@@ -106,6 +134,8 @@
                 Presentation = presentation,
                 Price = price is { } p && scan.Presentation is { } pres ? p * pres.Factor : price,
                 Available = AvailableFor is null ? null : await AvailableFor(item),
+                AvailableSerials = Tracking == TrackingMode.Pick && item.Tracking == ItemTrackings.Serial && SerialsFor is not null
+                    ? await SerialsFor(item) : [],
             });
         }
         await NotifyAsync();

@@ -28,7 +28,8 @@ public sealed class PresentationTests : IAsyncLifetime
         Assert.Equal(24, quantity);
         Assert.Equal(1.5m, unitCost);
 
-        await _t.Wms.Receipts.ReceiveDirectAsync(_t.Central, null, [new DocumentLine(water, quantity, unitCost)]);
+        // El agua controla lote (fase 3): se recibe con el lote de las cajas.
+        await _t.Wms.Receipts.ReceiveDirectAsync(_t.Central, null, [new DocumentLine(water, quantity, unitCost, [new LotQuantity("A-001", quantity)])]);
         Assert.Equal(24, await _t.OnHandAsync(_t.Central, water));
 
         // Sin presentación, la cantidad ya está en la unidad base.

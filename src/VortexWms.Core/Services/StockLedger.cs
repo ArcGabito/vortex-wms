@@ -17,12 +17,22 @@ internal static class StockLedger
     /// <param name="MovementId">Id fijo (derivado de un evento externo); por defecto uno nuevo.</param>
     /// <param name="UnitCost">Costo unitario de una entrada con costo conocido (compra, transferencia); sin él, al promedio.</param>
     /// <param name="SaleAmount">Importe de venta de una salida (ventas y despachos), para el margen.</param>
+    /// <param name="Lots">Lotes del movimiento (al recibir, obligatorio si el artículo controla lote; al sacar, si falta, FEFO).</param>
+    /// <param name="Serials">Series del movimiento (una por unidad) si el artículo controla serie.</param>
+    /// <param name="LotMode">Estricto: faltan lotes o series, se rechaza. Tolerante (ventas de caja): lo que falta queda sin lote.</param>
+    /// <param name="AllowFefoOverride">Si se puede sacar de otro lote que el que sugiere FEFO.</param>
+    /// <param name="AllowUnavailableLots">Si se puede sacar de lotes vencidos, en cuarentena o bloqueados (mermas).</param>
     public sealed record Entry(
         Guid SiteId, Guid ItemId, decimal Quantity, string Kind, string Reason, Guid? DocumentId = null, string? Reference = null,
-        string? Note = null, Guid? MovementId = null, decimal? UnitCost = null, decimal? SaleAmount = null);
+        string? Note = null, Guid? MovementId = null, decimal? UnitCost = null, decimal? SaleAmount = null,
+        IReadOnlyList<LotQuantity>? Lots = null, IReadOnlyList<string>? Serials = null, LotMode LotMode = LotMode.Strict,
+        bool AllowFefoOverride = false, bool AllowUnavailableLots = false);
+
+    public enum LotMode { Strict, Lenient }
 
     /// <summary>Costo con que se valorizó un movimiento.</summary>
-    public sealed record Valued(decimal OnHand, decimal UnitCost, decimal TotalCost);
+    public sealed record Valued(decimal OnHand, decimal UnitCost, decimal TotalCost, IReadOnlyList<LotQuantity>? Lots = null,
+        IReadOnlyList<string>? Serials = null);
 
     public static async Task<decimal> ApplyAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string? userName, Entry e) =>
         (await ApplyValuedAsync(c, tx, now, userName, e)).OnHand;
@@ -33,6 +43,7 @@ internal static class StockLedger
         if (e.MovementId is { } fixedId && await MovementExistsAsync(c, tx, fixedId))
             return await ValuedAsync(c, tx, fixedId, await OnHandAsync(c, tx, e.SiteId, e.ItemId));
 
+        var lots = await LotLedger.ApplyAsync(c, tx, now, e, await OnHandAsync(c, tx, e.SiteId, e.ItemId));
         await c.ExecAsync("""
             INSERT INTO stock (site_id, item_id, on_hand, reserved, updated_at) VALUES ($site, $item, $qty, 0, $now)
             ON CONFLICT (site_id, item_id) DO UPDATE SET on_hand = on_hand + $qty, updated_at = $now
@@ -49,13 +60,14 @@ internal static class StockLedger
             ("$user", userName), ("$note", e.Note), ("$input", e.Quantity > 0 ? Valuation.Store(e.UnitCost) : null),
             ("$sale", Valuation.Store(e.SaleAmount)), ("$op", Valuation.OperationType(e.Kind, e.Reason)));
         await Valuation.RevalueAsync(c, tx, e.SiteId, e.ItemId, now, movementId);
+        await LotLedger.RecordAsync(c, tx, movementId, lots);
         var valued = await ValuedAsync(c, tx, movementId, onHand);
 
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.StockAdjusted,
             new StockAdjusted(e.SiteId, e.ItemId, e.Quantity, onHand, e.Reason, e.Reference, valued.UnitCost, valued.TotalCost,
-                e.SaleAmount),
+                e.SaleAmount, lots.Lots.Count > 0 ? lots.Lots : null, lots.Serials.Count > 0 ? lots.Serials : null),
             subjectType: "item", subjectId: e.ItemId.ToString(), id: movementId);
-        return valued;
+        return valued with { Lots = lots.Lots, Serials = lots.Serials };
     }
 
     private static async Task<Valued> ValuedAsync(SqliteConnection c, SqliteTransaction tx, Guid movementId, decimal onHand) =>
@@ -84,7 +96,11 @@ internal static class StockLedger
         if (local is not null)
         {
             if (local.Site == s.SiteId && local.Item == s.ItemId && local.Qty == s.QuantityDelta)
+            {
+                // Mismo movimiento: si FEFO asignó otros lotes aquí, quedan los del hub.
+                await LotLedger.ReplicateAsync(c, tx, now, movementId, s.SiteId, s.ItemId, s.QuantityDelta, s.Lots, s.Serials, null, local.Qty);
                 return;
+            }
             await c.ExecAsync("UPDATE stock SET on_hand = on_hand - $qty, updated_at = $now WHERE site_id = $site AND item_id = $item", tx,
                 ("$qty", local.Qty), ("$now", now), ("$site", local.Site), ("$item", local.Item));
             await c.ExecAsync("""
@@ -102,6 +118,7 @@ internal static class StockLedger
             await Valuation.RevalueAsync(c, tx, local.Site, local.Item, local.At < occurredAt ? local.At : occurredAt, Guid.Empty);
             if (local.Site != s.SiteId || local.Item != s.ItemId)
                 await Valuation.RevalueAsync(c, tx, s.SiteId, s.ItemId, occurredAt, Guid.Empty);
+            await LotLedger.ReplicateAsync(c, tx, now, movementId, s.SiteId, s.ItemId, s.QuantityDelta, s.Lots, s.Serials, local.Site, local.Qty);
             await SyncConflicts.RecordAsync(c, tx, now, SyncConflictKinds.Movement, movementId, local.Ref ?? s.Reference,
                 $"{local.Qty:0.##}→{s.QuantityDelta:0.##}");
             return;
@@ -119,6 +136,7 @@ internal static class StockLedger
             ("$item", s.ItemId), ("$qty", s.QuantityDelta), ("$after", await OnHandAsync(c, tx, s.SiteId, s.ItemId)),
             ("$reason", s.Reason), ("$ref", s.Reference), ("$input", Valuation.Store(ReplicatedInputCost(s))),
             ("$sale", Valuation.Store(s.SaleAmount)), ("$op", Valuation.OperationType(KindFor(s.Reason, s.QuantityDelta), s.Reason)));
+        await LotLedger.ReplicateAsync(c, tx, now, movementId, s.SiteId, s.ItemId, s.QuantityDelta, s.Lots, s.Serials, null, null);
         // Si llegó atrasado (un equipo que estuvo sin conexión), se recalcula desde su fecha.
         await Valuation.RevalueAsync(c, tx, s.SiteId, s.ItemId, occurredAt, movementId);
     }

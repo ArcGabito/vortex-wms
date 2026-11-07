@@ -131,7 +131,7 @@
                     </select>
                 </div>
             </div>
-            <LineEditor Changed="StateHasChanged" Lines="d.Lines" ShowPrice PriceLabel="@(T("receipts.costo_unit"))" />
+            <LineEditor Changed="StateHasChanged" Lines="d.Lines" ShowPrice PriceLabel="@(T("receipts.costo_unit"))" Tracking="LineEditor.TrackingMode.Receive" />
         </ChildContent>
         <Footer>
             <button class="btn" @onclick="Close">@T("receipts.cancelar")</button>
@@ -168,6 +168,12 @@
                         </div>
                         <input class="control" type="number" min="0" step="any" @bind="line.Received" @bind:event="oninput" aria-label="@(T("receipts.cantidad_recibida"))" />
                         <button class="btn btn-ghost icon-btn sm" title="@(T("receipts.igual_lo_esperado"))" aria-label="@(T("receipts.igual_lo_esperado"))" @onclick="() => line.Received = line.Row.ExpectedQty"><Icon Name="check" Size="16" /></button>
+                        @if (line.Item is { } item && item.Tracking != ItemTrackings.None && line.Received > 0)
+                        {
+                            <div style="grid-column:1 / -1">
+                                <TrackingInput Item="item" Quantity="line.Received" Lots="line.Lots" @bind-SerialsText="line.SerialsText" WithExpiry Changed="StateHasChanged" />
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -226,10 +232,16 @@
         public List<LineEditor.LineDraft> Lines { get; } = [];
     }
 
-    private sealed class ReceiveLine(ReceiptLineRow row)
+    private sealed class ReceiveLine(ReceiptLineRow row, ItemRow? item)
     {
         public ReceiptLineRow Row { get; } = row;
+        public ItemRow? Item { get; } = item;
         public decimal Received { get; set; } = row.ExpectedQty;
+        public List<TrackingInput.LotDraft> Lots { get; } = [];
+        public string SerialsText { get; set; } = "";
+
+        public ReceivedLine ToReceived() => new(Row.LineNo, Received, TrackingInput.ToLots(Lots),
+            TrackingInput.Parse(SerialsText) is { Count: > 0 } s ? s : null);
     }
 
     private sealed record ReceiveForm(ReceiptRow Receipt, List<ReceiveLine> Lines);
@@ -343,7 +355,10 @@
     {
         _error = null;
         var lines = await Wms.Receipts.GetLinesAsync(receipt.Id);
-        _receive = new ReceiveForm(receipt, lines.Select(l => new ReceiveLine(l)).ToList());
+        var form = new List<ReceiveLine>();
+        foreach (var l in lines)
+            form.Add(new ReceiveLine(l, await Wms.Master.GetItemAsync(l.ItemId)));
+        _receive = new ReceiveForm(receipt, form);
     }
 
     private async Task SaveReceiveAsync()
@@ -351,7 +366,7 @@
         if (_receive is not { } rc)
             return;
         _busy = true;
-        _error = await TryAsync(() => Wms.Receipts.ReceiveExpectedAsync(rc.Receipt.Id, rc.Lines.ToDictionary(l => l.Row.LineNo, l => l.Received)),
+        _error = await TryAsync(() => Wms.Receipts.ReceiveExpectedAsync(rc.Receipt.Id, rc.Lines.Select(l => l.ToReceived()).ToList()),
             T("receipts.recibida_el_stock_ya_esta", rc.Receipt.Number));
         _busy = false;
         if (_error is null)

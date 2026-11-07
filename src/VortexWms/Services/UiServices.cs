@@ -107,6 +107,7 @@ public static class Fmt
         TimeZone is null ? value.ToLocalTime() : VortexApi.Suite.Regional.RegionalSettings.ToCompanyTime(value, TimeZone);
 
     public static string Date(DateTimeOffset value) => Local(value).ToString("d MMM yyyy", Culture);
+    public static string Date(DateOnly value) => value.ToString("d MMM yyyy", Culture);
     public static string DateTime(DateTimeOffset value) => Local(value).ToString("d MMM yyyy, HH:mm", Culture);
 
     public static string Ago(DateTimeOffset value)

@@ -44,18 +44,18 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | WMS-10 | Presentaciones con factor y varios códigos de barras (EAN, DUN-14) | Hecho | 2 |
 | WMS-11 | Peso, unidad UN/ECE y control por lote o serie | Hecho | 2 |
 | WMS-12 | Escaneo con la cámara en Android e iOS | Pendiente | 2 |
-| WMS-13 | Volumen, vida útil y días mínimos de vida al recibir | Pendiente | 3 |
+| WMS-13 | Volumen, vida útil y días mínimos de vida al recibir | Parcial: vida útil y días mínimos; falta el volumen | 3 |
 | WMS-14 | Kits y ensamblado (armar y desarmar con su costo) | Pendiente | 9 |
 
 ### Lotes y series
 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
-| WMS-20 | Stock por lote con vencimiento | Pendiente | 3 |
-| WMS-21 | FEFO en picking y despacho | Pendiente | 3 |
-| WMS-22 | Estados de lote (disponible, cuarentena, bloqueado) y alertas de vencimiento | Pendiente | 3 |
-| WMS-23 | Series por unidad al recibir y despachar | Pendiente | 3 |
-| WMS-24 | Trazabilidad hacia proveedores y clientes para retiros del mercado | Pendiente | 3 |
+| WMS-20 | Stock por lote con vencimiento | Hecho | 3 |
+| WMS-21 | FEFO en picking y despacho | Hecho | 3 |
+| WMS-22 | Estados de lote (disponible, cuarentena, bloqueado) y alertas de vencimiento | Hecho | 3 |
+| WMS-23 | Series por unidad al recibir y despachar | Hecho | 3 |
+| WMS-24 | Trazabilidad hacia proveedores y clientes para retiros del mercado | Hecho | 3 |
 
 ### Entradas
 
@@ -131,8 +131,8 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 
 ## Dónde estamos (2026-11)
 
-Fases 0, 1 y 2 hechas (salvo el escaneo con cámara de la fase 2). Lo siguiente es la fase 3 (lotes, vencimientos y
-series), que abre farmacia, alimentos, cosmética y electrónica.
+Fases 0 a 3 hechas (salvo el escaneo con cámara de la fase 2 y el volumen del artículo). Lo siguiente es la fase 4a
+(ubicaciones y guardado guiado).
 
 ## Reglas que el plan respeta
 
@@ -246,6 +246,11 @@ fase 4 aunque la ubicación quede vacía hasta entonces; `stock` sigue como tota
 **Terminado cuando:** el despacho sugiere FEFO; un lote vencido no sale; la trazabilidad de un lote lista sus clientes;
 los lotes se replican entre equipos.
 
+**Estado (2026-11):** hecha. Saldo por lote con vencimiento y estado (disponible, cuarentena, bloqueado), FEFO en
+despachos, transferencias y ventas de caja, series por unidad, vida útil y días mínimos al recibir, alertas por vencer y
+trazabilidad. El stock anterior a controlar lote queda "sin lote" y sale al final. Decisión 5 (planes por `features`)
+sigue pendiente: los lotes están disponibles para todos. Pruebas en `LotsTests`. **Pendiente:** volumen del artículo.
+
 ## Fase 4a: ubicaciones y guardado · L
 
 **Objetivo:** que el stock tenga un lugar exacto y el operario sepa dónde guardar.
@@ -357,7 +362,7 @@ Conviene enviar las de cada fase juntas, antes de empezarla.
 | Sedes asignadas por miembro del sistema | Campo en el acceso del miembro | 0 |
 | `unitCost`, `totalCost` en `stock.adjusted` y `goods.received` | Campos aditivos (documentar en el catálogo) | 1 |
 | Presentaciones con factor, código de barras y código SUNAT; control lote/serie; peso | Campos de `item` | 2 |
-| `lotCode`, `expiresAt`, `serials` en eventos de stock y de venta | Campos aditivos | 3 |
+| `lots` (`lotCode`, `quantity`, `expiresAt`) y `serials` en eventos de stock y de venta (hecho) | Campos aditivos | 3 |
 | `stock.relocated` | Evento | 4a |
 | `lines` en `shipment.dispatched` | Campo aditivo | 4b |
 | `shipment.returned`, `goods.returned` | Eventos | 5 |

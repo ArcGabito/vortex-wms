@@ -232,6 +232,26 @@
                     <input class="control" disabled value="@(Preview(a) is { } p ? $"{Fmt.Qty(p)} {a.Item?.Unit}" : "—")" />
                 </div>
             </div>
+            @if (a.Item is { Tracking: ItemTrackings.Lot })
+            {
+                <div class="form-row">
+                    <div class="field">
+                        <label>@(a.IsCount ? T("inventory.lote_que_cuentas") : T("inventory.lote_opcional_al_sacar"))</label>
+                        <input class="control" placeholder="@(T("inventory.ej_l2611"))" @bind="a.LotCode" />
+                    </div>
+                    <div class="field">
+                        <label>@T("inventory.vence_lote_nuevo")</label>
+                        <input class="control" type="date" @bind="a.ExpiresAt" />
+                    </div>
+                </div>
+            }
+            else if (a.Item is { Tracking: ItemTrackings.Serial })
+            {
+                <div class="field">
+                    <label>@T("inventory.series_que_entran_o_salen")</label>
+                    <textarea class="control" rows="2" placeholder="@(T("tracking.una_serie_por_renglon"))" @bind="a.SerialsText"></textarea>
+                </div>
+            }
             <div class="field">
                 <label>@T("inventory.nota_opcional")</label>
                 <input class="control" placeholder="@(T("inventory.ej_conteo_ciclico_pasillo"))" @bind="a.Note" />
@@ -270,7 +290,8 @@
                     </select>
                 </div>
             </div>
-            <LineEditor Changed="StateHasChanged" @ref="_lines" Lines="t.Lines" AvailableFor="AvailableAtOriginAsync" />
+            <LineEditor Changed="StateHasChanged" @ref="_lines" Lines="t.Lines" AvailableFor="AvailableAtOriginAsync"
+                        Tracking="LineEditor.TrackingMode.Pick" SerialsFor="SerialsAtOriginAsync" />
             <div class="field">
                 <label>@T("inventory.nota_opcional")</label>
                 <input class="control" placeholder="@(T("inventory.ej_reposicion_semanal"))" @bind="t.Note" />
@@ -309,6 +330,9 @@
 @code {
     private sealed class AdjustForm
     {
+        public string? LotCode { get; set; }
+        public DateOnly? ExpiresAt { get; set; }
+        public string SerialsText { get; set; } = "";
         public Guid? SiteId { get; set; }
         public ItemRow? Item { get; set; }
         public bool IsCount { get; set; } = true;
@@ -514,7 +538,8 @@
         }
         _busy = true;
         _error = await TryAsync(() => Wms.Inventory.AdjustAsync(site, item.Id, a.IsCount ? quantity : null, a.IsCount ? null : quantity,
-            a.Reason, a.Note), T("inventory.stock_de_actualizado", item.Name));
+            a.Reason, a.Note, a.LotCode, a.ExpiresAt, TrackingInput.Parse(a.SerialsText) is { Count: > 0 } s ? s : null),
+            T("inventory.stock_de_actualizado", item.Name));
         _busy = false;
         if (_error is null)
             CloseModals();
@@ -541,6 +566,9 @@
 
     private async Task<decimal?> AvailableAtOriginAsync(ItemRow item) =>
         _transfer?.FromId is { } from ? await Wms.Inventory.GetAvailableAsync(from, item.Id) : null;
+
+    private async Task<IReadOnlyList<string>> SerialsAtOriginAsync(ItemRow item) =>
+        _transfer?.FromId is { } from ? (await Wms.Lots.GetSerialsAsync(item.Id, from)).Select(s => s.Serial).ToList() : [];
 
     private async Task SaveTransferAsync()
     {
