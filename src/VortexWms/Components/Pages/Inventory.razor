@@ -220,9 +220,9 @@
                         <label>@T("inventory.presentacion")</label>
                         <select class="select" @bind="a.PresentationValue">
                             <option value="">@withPresentations.Unit</option>
-                            @foreach (var p in withPresentations.Presentations)
+                            @foreach (var pres in withPresentations.Presentations)
                             {
-                                <option value="@p.Code">@p.Name</option>
+                                <option value="@pres.Code">@pres.Name</option>
                             }
                         </select>
                     </div>
