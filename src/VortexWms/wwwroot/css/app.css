@@ -1075,3 +1075,15 @@ table.data .strong { font-weight: 700; color: var(--ink); }
     .kv { grid-template-columns: 1fr; gap: 2px 0; }
     .kv dd { margin-bottom: 10px; }
 }
+
+/* ---------- Lotes y series de una línea ---------- */
+
+.tracking { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border-radius: var(--radius-sm); background: var(--surface); }
+.tracking-row { display: grid; grid-template-columns: minmax(0, 1fr) 90px 150px 34px; gap: 8px; align-items: center; }
+.tracking-row .control { height: 36px; }
+.tracking-foot { display: flex; justify-content: space-between; gap: 10px; font-size: 12.5px; }
+
+@media (max-width: 960px) {
+    .tracking-row { grid-template-columns: minmax(0, 1fr) 80px 34px; }
+    .tracking-row input[type="date"] { grid-column: 1 / -1; }
+}

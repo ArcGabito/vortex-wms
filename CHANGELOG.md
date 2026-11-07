@@ -8,6 +8,14 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Fase 3: lotes, vencimientos y series.** Saldo por lote con vencimiento; recepción con lote obligatoria para los
+  artículos que controlan lote (con vida útil y días mínimos de vida al recibir). Despachos, transferencias y ventas de
+  caja salen por FEFO (lo que vence antes), sin lotes vencidos, en cuarentena ni bloqueados; elegir otro lote requiere
+  el permiso nuevo `lot.manage`. Series por unidad al recibir, despachar y transferir. Pantalla **Lotes**: saldos, por
+  vencer, cambio de estado, vida útil y trazabilidad de un lote o serie hasta proveedores y clientes. El stock anterior
+  a controlar lote queda "sin lote" y sale al final.
+- `stock.adjusted` gana `lots` y `serials`; las líneas de `goods.received`, `stock.transferred` y
+  `shipment.dispatched`, también (aditivos). Estado de lote y vida útil se comparten por `wms.record.upserted`.
 - **Microsoft Store:** paquete MSIX generado por `.github/workflows/store.yml` (etiqueta `vX.Y.Z`), firmado por la Store
   para instalar sin la advertencia de SmartScreen; envío automático opcional. Guía en `docs/MICROSOFT-STORE.md`.
 - **El idioma sigue al usuario:** el que elige en Configuración se guarda en el hub y se usa al entrar en cualquier

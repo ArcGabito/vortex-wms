@@ -70,13 +70,17 @@ public sealed class WmsSyncHandlers(
             if (sale.SiteId == Guid.Empty)
                 return "sin siteId";
             var amounts = (sale.Lines ?? []).GroupBy(l => l.ItemId).ToDictionary(g => g.Key, g => g.Sum(l => l.Total));
+            var serials = (sale.Lines ?? []).GroupBy(l => l.ItemId)
+                .ToDictionary(g => g.Key, g => g.SelectMany(l => l.Serials ?? []).ToList());
             foreach (var (itemId, quantity) in PerItem((sale.Lines ?? []).Select(l => (l.ItemId, l.Quantity))))
             {
                 if (!await StockLedger.TracksInventoryAsync(c, tx, itemId))
                     continue;
                 await StockLedger.ApplyAsync(c, tx, now, e.Source, new StockLedger.Entry(sale.SiteId, itemId, -quantity,
                     MovementKinds.Sale, "sale", sale.SaleId, sale.Number,
-                    MovementId: DeterministicId.From("sale", sale.SaleId, sale.SiteId, itemId), SaleAmount: amounts.GetValueOrDefault(itemId)));
+                    MovementId: DeterministicId.From("sale", sale.SaleId, sale.SiteId, itemId), SaleAmount: amounts.GetValueOrDefault(itemId),
+                    // La venta ya ocurrió: los lotes salen por FEFO y lo que no alcanza queda sin lote.
+                    Serials: serials.GetValueOrDefault(itemId) is { Count: > 0 } s ? s : null, LotMode: StockLedger.LotMode.Lenient));
             }
             return null;
         }, ct);
@@ -98,9 +102,15 @@ public sealed class WmsSyncHandlers(
                 tx, ("$id", voided.SaleId));
             // Vuelve al stock con el costo con que salió y anula su importe de venta.
             foreach (var m in sold.Where(m => m.Qty != 0))
+            {
+                // Vuelve a los mismos lotes y series de los que salió.
+                var saleMovement = DeterministicId.From("sale", voided.SaleId, m.Site, m.Item);
+                var (lots, serials) = await SoldLotsAsync(c, tx, saleMovement);
                 await StockLedger.ApplyAsync(c, tx, now, e.Source, new StockLedger.Entry(m.Site, m.Item, -m.Qty,
                     MovementKinds.SaleVoid, "sale_void", voided.SaleId, voided.Number ?? m.Ref, voided.Reason,
-                    DeterministicId.From("sale_void", voided.SaleId, m.Site, m.Item), UnitCost: m.Cost, SaleAmount: -m.Amount));
+                    DeterministicId.From("sale_void", voided.SaleId, m.Site, m.Item), UnitCost: m.Cost, SaleAmount: -m.Amount,
+                    Lots: lots, Serials: serials, LotMode: StockLedger.LotMode.Lenient));
+            }
             return sold.Count == 0 ? "venta desconocida" : null;
         }, ct);
 
@@ -121,7 +131,9 @@ public sealed class WmsSyncHandlers(
                     MovementKinds.SaleReturn, "return", ret.ReturnId, e.SubjectId,
                     MovementId: DeterministicId.From("sale_return", ret.ReturnId, ret.SiteId, itemId),
                     UnitCost: soldAt is null ? null : decimal.Parse(soldAt, System.Globalization.CultureInfo.InvariantCulture),
-                    SaleAmount: -amounts.GetValueOrDefault(itemId)));
+                    SaleAmount: -amounts.GetValueOrDefault(itemId),
+                    Lots: await ReturnedLotsAsync(c, tx, DeterministicId.From("sale", ret.SaleId, ret.SiteId, itemId), quantity),
+                    LotMode: StockLedger.LotMode.Lenient));
             }
             return null;
         }, ct);
@@ -211,6 +223,21 @@ public sealed class WmsSyncHandlers(
         {
             if (e.Source != ProductCode)
                 return "ignorado: solo lo publica el WMS";
+            if (r.Kind == WmsRecordKinds.LotStatus)
+            {
+                var lot = r.Data.Deserialize<LotStatusData>(VortexJson.Options);
+                if (lot is null || lot.SiteId == Guid.Empty || lot.ItemId == Guid.Empty || string.IsNullOrEmpty(lot.LotCode)
+                    || !Domain.LotStatuses.All.Contains(lot.Status))
+                    return "estado de lote no válido";
+                return await LotService.ApplyStatusAsync(c, tx, lot, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
+            }
+            if (r.Kind == WmsRecordKinds.ShelfLife)
+            {
+                var life = r.Data.Deserialize<Domain.ItemShelfLife>(VortexJson.Options);
+                if (life is null || life.ItemId == Guid.Empty)
+                    return "sin itemId";
+                return await LotService.ApplyShelfLifeAsync(c, tx, life, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
+            }
             if (r.Kind != WmsRecordKinds.StockSettings)
                 return $"ignorado: tipo {r.Kind} desconocido";
             var s = r.Data.Deserialize<StockSettingsData>(VortexJson.Options);
@@ -221,6 +248,38 @@ public sealed class WmsSyncHandlers(
         }, ct);
 
     // ---------- Internos ----------
+
+    /// <summary>Lotes y series que sacó un movimiento de venta, en positivo (para devolverlos tal cual al anular).</summary>
+    private static async Task<(List<Domain.LotQuantity>? Lots, List<string>? Serials)> SoldLotsAsync(SqliteConnection c, SqliteTransaction tx,
+        Guid movementId)
+    {
+        var lots = await c.QueryAsync("SELECT lot_code, expires_at, quantity FROM movement_lots WHERE movement_id = $id",
+            r => new Domain.LotQuantity(r.Str("lot_code"), -r.Dec("quantity"), LotLedger.DayOrNull(r.StrOrNull("expires_at"))), tx, ("$id", movementId));
+        var serials = await c.QueryAsync("SELECT serial FROM movement_serials WHERE movement_id = $id", r => r.Str("serial"), tx, ("$id", movementId));
+        return (lots.Count > 0 ? lots : null, serials.Count > 0 ? serials : null);
+    }
+
+    /// <summary>Lo devuelto vuelve a los lotes de la venta, en el orden en que salieron; lo que no alcanza, sin lote.</summary>
+    private static async Task<List<Domain.LotQuantity>?> ReturnedLotsAsync(SqliteConnection c, SqliteTransaction tx, Guid saleMovementId,
+        decimal quantity)
+    {
+        var (sold, _) = await SoldLotsAsync(c, tx, saleMovementId);
+        if (sold is null)
+            return null;
+        var result = new List<Domain.LotQuantity>();
+        var left = quantity;
+        foreach (var lot in sold.Where(l => l.Quantity > 0))
+        {
+            var take = Math.Min(left, lot.Quantity);
+            if (take <= 0)
+                break;
+            result.Add(lot with { Quantity = take });
+            left -= take;
+        }
+        if (left > 0)
+            result.Add(new Domain.LotQuantity(LotLedger.NoLot, left));
+        return result;
+    }
 
     private static IEnumerable<(Guid ItemId, decimal Quantity)> PerItem(IEnumerable<(Guid ItemId, decimal Quantity)> lines) =>
         lines.Where(l => l.ItemId != Guid.Empty && l.Quantity != 0)

@@ -92,8 +92,12 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
 
     /// <param name="countedQuantity">Conteo físico: el saldo pasa a ser este valor.</param>
     /// <param name="delta">Ajuste relativo (positivo o negativo). Se usa uno de los dos.</param>
+    /// <param name="lotCode">Lote del ajuste. En artículos con lote es obligatorio para sumar y para contar (el conteo es del lote);
+    /// al restar sin lote, sale por FEFO. Un ajuste puede dar de baja lotes vencidos o bloqueados.</param>
+    /// <param name="expiresAt">Vencimiento de un lote nuevo.</param>
+    /// <param name="serials">Series que entran o salen, en artículos con serie.</param>
     public Task<decimal> AdjustAsync(Guid siteId, Guid itemId, decimal? countedQuantity, decimal? delta, string reason, string? note,
-        CancellationToken ct = default)
+        string? lotCode = null, DateOnly? expiresAt = null, IReadOnlyList<string>? serials = null, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Adjust);
         Require(countedQuantity is not null ^ delta is not null, T("error.indica_la_cantidad_contada_la"));
@@ -105,14 +109,26 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
             await RequireSiteAndItemAsync(c, tx, siteId, itemId);
             await RequireSiteAccessAsync(c, tx, siteId);
             var current = await StockLedger.OnHandAsync(c, tx, siteId, itemId);
+            var tracking = await LotLedger.TrackingAsync(c, tx, itemId);
+            var lot = Clean(lotCode)?.ToUpperInvariant();
+            if (tracking == ItemTrackings.Lot && countedQuantity is not null)
+            {
+                // En artículos con lote se cuenta cada lote: el ajuste es la diferencia con el saldo de ese lote.
+                Require(lot is not null, T("error.indica_el_lote_de", await ItemLabelAsync(c, tx, itemId)));
+                var lotQty = await c.ScalarAsync<decimal>("SELECT COALESCE(SUM(quantity), 0) FROM stock_lots WHERE site_id = $s AND item_id = $i AND lot_code = $l",
+                    tx, ("$s", siteId), ("$i", itemId), ("$l", lot));
+                current = lotQty;
+            }
             var change = countedQuantity is { } counted ? counted - current : delta!.Value;
             Require(change != 0, T("error.el_ajuste_no_cambia_el"));
             Require(current + change >= 0, T("error.el_stock_no_puede_quedar", current));
+            var lots = tracking == ItemTrackings.Lot && lot is not null ? new List<LotQuantity> { new(lot, Math.Abs(change), expiresAt) } : null;
             var item = await InventoryService.ItemLabelAsync(c, tx, itemId);
             await AuditAsync(c, tx, now, VortexApi.Suite.Auditing.AuditActions.StockAdjusted, "item", itemId, item,
                 $"{(change > 0 ? "+" : "")}{change:0.##} ({reason}){(Clean(note) is { } n ? $": {n}" : "")}");
             return await StockLedger.ApplyAsync(c, tx, now, Context.UserName,
-                new StockLedger.Entry(siteId, itemId, change, MovementKinds.Adjustment, reason, Note: Clean(note)));
+                new StockLedger.Entry(siteId, itemId, change, MovementKinds.Adjustment, reason, Note: Clean(note), Lots: lots, Serials: serials,
+                    AllowFefoOverride: true, AllowUnavailableLots: true));
         }, ct);
     }
 
@@ -139,17 +155,25 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
 
             var transferId = Guid.NewGuid();
             var number = await DocumentNumbers.NextAsync(c, tx, DocumentNumbers.Transfer, Context.DeviceTag);
+            var sentLots = new Dictionary<Guid, (List<LotQuantity>? Lots, IReadOnlyList<string>? Serials)>();
             foreach (var line in merged)
             {
                 var sent = await StockLedger.ApplyValuedAsync(c, tx, now, Context.UserName, new StockLedger.Entry(fromSiteId, line.ItemId,
-                    -line.Quantity, MovementKinds.TransferOut, "transfer", transferId, number, Clean(note)));
-                // Llega al destino con el costo con que salió del origen.
+                    -line.Quantity, MovementKinds.TransferOut, "transfer", transferId, number, Clean(note), Lots: line.Lots, Serials: line.Serials,
+                    AllowFefoOverride: Context.Can(WmsPermissions.ManageLots)));
+                // Llega al destino con el costo con que salió del origen, y con los mismos lotes y series.
+                var lots = sent.Lots?.Select(l => l with { Quantity = -l.Quantity }).ToList();
                 await StockLedger.ApplyAsync(c, tx, now, Context.UserName, new StockLedger.Entry(toSiteId, line.ItemId,
-                    line.Quantity, MovementKinds.TransferIn, "transfer", transferId, number, Clean(note), UnitCost: sent.UnitCost));
+                    line.Quantity, MovementKinds.TransferIn, "transfer", transferId, number, Clean(note), UnitCost: sent.UnitCost,
+                    Lots: lots is { Count: > 0 } ? lots : null, Serials: sent.Serials is { Count: > 0 } s ? s : null,
+                    LotMode: StockLedger.LotMode.Lenient));
+                sentLots[line.ItemId] = (lots, sent.Serials);
             }
 
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.StockTransferred,
-                new StockTransferred(transferId, number, fromSiteId, toSiteId, merged.Select(l => new QuantityLine(l.ItemId, l.Quantity)).ToList()),
+                new StockTransferred(transferId, number, fromSiteId, toSiteId, merged.Select(l => new QuantityLine(l.ItemId, l.Quantity, null, null,
+                    sentLots.GetValueOrDefault(l.ItemId).Lots is { Count: > 0 } x ? x : null,
+                    sentLots.GetValueOrDefault(l.ItemId).Serials is { Count: > 0 } s ? s : null)).ToList()),
                 subjectType: "transfer", subjectId: number, id: transferId);
             return number;
         }, ct);
@@ -310,7 +334,9 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     }
 
     internal static List<DocumentLine> Merge(IEnumerable<DocumentLine> lines) =>
-        lines.GroupBy(l => l.ItemId).Select(g => new DocumentLine(g.Key, g.Sum(l => l.Quantity), g.First().UnitPrice)).ToList();
+        lines.GroupBy(l => l.ItemId).Select(g => new DocumentLine(g.Key, g.Sum(l => l.Quantity), g.First().UnitPrice,
+            g.Any(l => l.Lots is { Count: > 0 }) ? g.SelectMany(l => l.Lots ?? []).ToList() : null,
+            g.Any(l => l.Serials is { Count: > 0 }) ? g.SelectMany(l => l.Serials ?? []).ToList() : null)).ToList();
 
     internal static async Task RequireSiteAsync(SqliteConnection c, SqliteTransaction tx, Guid siteId) =>
         Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM sites WHERE id = $id AND is_deleted = 0", tx, ("$id", siteId)) > 0,

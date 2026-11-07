@@ -1,0 +1,280 @@
+@page "/lotes"
+@inherits WmsPage
+@using VortexWms.Core.Services
+
+<SectionContent SectionName="page-title">@T("lots.lotes")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("lots.lotes_y_vencimientos")</h2>
+            <p>@T("lots.explica")</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field">
+            <label>@T("lots.sede")</label>
+            <select class="select" value="@_site" @onchange="async e => { _site = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }">
+                <option value="">@T("lots.todas")</option>
+                @foreach (var site in _sites)
+                {
+                    <option value="@site.Id">@site.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field search">
+            <label>@T("lots.buscar")</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="@(T("lots.lote_codigo_articulo"))" value="@_search" @onchange="async e => { _search = e.Value?.ToString() ?? string.Empty; _page = 1; await ReloadAsync(); }" />
+            </div>
+        </div>
+        <div class="field" style="width:auto">
+            <label>@T("lots.ver")</label>
+            <div class="segmented">
+                <button class="@(_expiring ? "" : "on")" @onclick="async () => { _expiring = false; _page = 1; await ReloadAsync(); }">@T("lots.con_saldo")</button>
+                <button class="@(_expiring ? "on" : "")" @onclick="async () => { _expiring = true; _page = 1; await ReloadAsync(); }">@T("lots.por_vencer", LotService.DefaultExpiringDays)</button>
+            </div>
+        </div>
+    </div>
+
+    @if (_result is { } page)
+    {
+        @if (page.Total == 0 && !Loading)
+        {
+            <EmptyState Icon="package-check" Title="@(_expiring ? T("lots.nada_por_vencer") : T("lots.no_hay_lotes"))" Text="@(T("lots.no_hay_lotes_explica"))" />
+        }
+        else
+        {
+            <div class="table-wrap">
+                <table class="data">
+                    <thead>
+                        <tr><th>@T("lots.lote")</th><th>@T("lots.articulo")</th><th>@T("lots.sede")</th><th>@T("lots.vence")</th><th class="num">@T("lots.saldo")</th><th>@T("lots.estado")</th><th class="actions-col"></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var l in page.Items)
+                        {
+                            <tr @key="(l.SiteId, l.ItemId, l.LotCode)">
+                                <td class="strong">@l.LotCode</td>
+                                <td><div class="two-line"><span class="t1">@l.ItemName</span><span class="t2">#@l.Sku</span></div></td>
+                                <td><span class="muted">@l.SiteName</span></td>
+                                <td>
+                                    @if (l.ExpiresAt is { } exp)
+                                    {
+                                        <div class="two-line">
+                                            <span class="t1" style="font-weight:600">@Fmt.Date(exp)</span>
+                                            <span class="t2 @(l.IsExpired ? "qty-neg" : l.DaysLeft <= LotService.DefaultExpiringDays ? "warn-text" : "")">
+                                                @(l.IsExpired ? T("lots.vencido_hace", -l.DaysLeft!.Value) : T("lots.quedan_dias", l.DaysLeft!.Value))
+                                            </span>
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <span class="faint">@T("lots.no_vence")</span>
+                                    }
+                                </td>
+                                <td class="num strong">@Fmt.Qty(l.Quantity)</td>
+                                <td><StatusPill Text="@StatusText(l.Status)" Tone="@StatusTone(l.Status)" /></td>
+                                <td class="actions-col">
+                                    <KebabMenu>
+                                        <button @onclick="() => TraceAsync(l.LotCode, l.ItemId)"><Icon Name="list" Size="18" />@T("lots.trazabilidad")</button>
+                                        @if (Session.Can(WmsPermissions.ManageLots))
+                                        {
+                                            @foreach (var status in LotStatuses.All.Where(s => s != l.Status))
+                                            {
+                                                <button @onclick="() => StartStatus(l, status)">@T("lots.pasar_a", StatusText(status))</button>
+                                            }
+                                        }
+                                        @if (Session.Can(WmsPermissions.StockSettings))
+                                        {
+                                            <button @onclick="() => StartShelfLifeAsync(l)"><Icon Name="clock" Size="18" />@T("lots.vida_util")</button>
+                                        }
+                                    </KebabMenu>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+            <Pager Page="page.Page" PageSize="page.PageSize" Total="page.Total" Noun="@(T("lots.lotes_noun"))" OnPage="async p => { _page = p; await ReloadAsync(); }" />
+        }
+    }
+
+    <div class="card">
+        <div class="card-head">
+            <div>
+                <h3>@T("lots.trazabilidad")</h3>
+                <div class="sub">@T("lots.trazabilidad_explica")</div>
+            </div>
+        </div>
+        <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+            <form class="filters" @onsubmit="() => TraceAsync(_traceCode, null)">
+                <div class="field grow">
+                    <input class="control" placeholder="@(T("lots.lote_o_serie"))" @bind="_traceCode" aria-label="@(T("lots.lote_o_serie"))" />
+                </div>
+                <button class="btn btn-dark" type="submit"><Icon Name="search" Size="18" />@T("lots.rastrear")</button>
+            </form>
+            @if (_trace is { } trace)
+            {
+                @if (trace.Count == 0)
+                {
+                    <span class="muted">@T("lots.sin_movimientos", _traceCode ?? "")</span>
+                }
+                else
+                {
+                    <div class="table-wrap">
+                        <table class="data" style="min-width:640px">
+                            <thead>
+                                <tr><th>@T("lots.fecha")</th><th>@T("lots.movimiento")</th><th>@T("lots.articulo")</th><th>@T("lots.sede")</th><th>@T("lots.proveedor_cliente")</th><th class="num">@T("lots.cantidad")</th></tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var t in trace)
+                                {
+                                    <tr>
+                                        <td>@Fmt.DateTime(t.At)</td>
+                                        <td><div class="two-line"><span class="t1">@Fmt.MovementKind(t.Kind)</span><span class="t2">@t.Reference</span></div></td>
+                                        <td>@t.ItemName</td>
+                                        <td><span class="muted">@t.SiteName</span></td>
+                                        <td>@(t.PartyName ?? (t.PartyId is null ? "—" : T("lots.registrado")))</td>
+                                        <td class="num"><span class="@(t.Quantity >= 0 ? "qty-pos" : "qty-neg")">@(t.Quantity > 0 ? "+" : "")@Fmt.Qty(t.Quantity)</span></td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            }
+        </div>
+    </div>
+</div>
+
+@if (_status is { } st)
+{
+    <Modal Title="@(T("lots.cambiar_estado", st.Lot.LotCode))" Subtitle="@($"{st.Lot.ItemName} · {st.Lot.SiteName}")" Size="sm" Error="@_error" OnClose="() => _status = null">
+        <ChildContent>
+            <div class="alert info"><Icon Name="alert" Size="18" /><span>@T("lots.estado_explica", StatusText(st.Status))</span></div>
+            <div class="field">
+                <label>@T("lots.motivo")</label>
+                <input class="control" placeholder="@(T("lots.ej_control_de_calidad"))" @bind="st.Note" />
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _status = null">@T("lots.cancelar")</button>
+            <button class="btn btn-dark" @onclick="SaveStatusAsync">@T("lots.pasar_a", StatusText(st.Status))</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_shelf is { } sh)
+{
+    <Modal Title="@(T("lots.vida_util"))" Subtitle="@sh.ItemName" Size="sm" Error="@_error" OnClose="() => _shelf = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("lots.dias_de_vida_util")</label>
+                    <input class="control" type="number" min="1" @bind="sh.ShelfLifeDays" />
+                </div>
+                <div class="field">
+                    <label>@T("lots.dias_minimos_al_recibir")</label>
+                    <input class="control" type="number" min="0" @bind="sh.MinDays" />
+                </div>
+            </div>
+            <span class="muted" style="font-size:12.5px">@T("lots.vida_util_explica")</span>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _shelf = null">@T("lots.cancelar")</button>
+            <button class="btn btn-dark" @onclick="SaveShelfLifeAsync">@T("lots.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class StatusForm(LotRow lot, string status)
+    {
+        public LotRow Lot { get; } = lot;
+        public string Status { get; } = status;
+        public string? Note { get; set; }
+    }
+
+    private sealed class ShelfForm(Guid itemId, string itemName)
+    {
+        public Guid ItemId { get; } = itemId;
+        public string ItemName { get; } = itemName;
+        public int? ShelfLifeDays { get; set; }
+        public int? MinDays { get; set; }
+    }
+
+    private PagedResult<LotRow>? _result;
+    private IReadOnlyList<SiteRow> _sites = [];
+    private string _site = "", _search = "";
+    private bool _expiring;
+    private int _page = 1;
+    private string? _traceCode, _error;
+    private IReadOnlyList<TraceRow>? _trace;
+    private StatusForm? _status;
+    private ShelfForm? _shelf;
+
+    protected override async Task LoadAsync()
+    {
+        _sites = (await Wms.Master.GetSitesAsync(activeOnly: true)).Where(s => Session.SiteIds.Count == 0 || Session.SiteIds.Contains(s.Id)).ToList();
+        _result = await Wms.Lots.GetLotsAsync(new LotQuery(Guid.TryParse(_site, out var g) ? g : null, null, _search,
+            _expiring ? LotService.DefaultExpiringDays : null, Page: _page));
+    }
+
+    private static string StatusText(string status) => status switch
+    {
+        LotStatuses.Quarantine => T("lots.en_cuarentena"),
+        LotStatuses.Blocked => T("lots.bloqueado"),
+        _ => T("lots.disponible"),
+    };
+
+    private static string StatusTone(string status) => status switch
+    {
+        LotStatuses.Quarantine => "warn",
+        LotStatuses.Blocked => "bad",
+        _ => "good",
+    };
+
+    private async Task TraceAsync(string? code, Guid? itemId)
+    {
+        _traceCode = code;
+        if (string.IsNullOrWhiteSpace(code))
+            return;
+        IReadOnlyList<TraceRow>? rows = null;
+        await RunAsync(async () => rows = await Wms.Lots.TraceAsync(code, itemId));
+        _trace = rows;
+    }
+
+    private void StartStatus(LotRow lot, string status)
+    {
+        _error = null;
+        _status = new StatusForm(lot, status);
+    }
+
+    private async Task SaveStatusAsync()
+    {
+        if (_status is not { } st)
+            return;
+        _error = await TryAsync(() => Wms.Lots.SetStatusAsync(st.Lot.SiteId, st.Lot.ItemId, st.Lot.LotCode, st.Status, st.Note),
+            T("lots.estado_cambiado", st.Lot.LotCode, StatusText(st.Status)));
+        if (_error is null)
+            _status = null;
+    }
+
+    private async Task StartShelfLifeAsync(LotRow lot)
+    {
+        _error = null;
+        var life = await Wms.Lots.GetShelfLifeAsync(lot.ItemId);
+        _shelf = new ShelfForm(lot.ItemId, lot.ItemName) { ShelfLifeDays = life.ShelfLifeDays, MinDays = life.MinDaysOnReceipt };
+    }
+
+    private async Task SaveShelfLifeAsync()
+    {
+        if (_shelf is not { } sh)
+            return;
+        _error = await TryAsync(() => Wms.Lots.SetShelfLifeAsync(sh.ItemId, sh.ShelfLifeDays, sh.MinDays), T("lots.vida_util_guardada"));
+        if (_error is null)
+            _shelf = null;
+    }
+}

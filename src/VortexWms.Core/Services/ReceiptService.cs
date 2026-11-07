@@ -84,17 +84,22 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
             }
 
             await PostAsync(c, tx, now, receiptId, number, null, siteId, supplierId,
-                merged.Select(l => new QuantityLine(l.ItemId, l.Quantity, l.UnitPrice)).ToList());
+                merged.Select(l => new QuantityLine(l.ItemId, l.Quantity, l.UnitPrice, null, l.Lots, l.Serials)).ToList());
             return number;
         }, ct);
     }
 
     /// <summary>Recibe una recepción esperada. <paramref name="received"/>: cantidad recibida por número de línea.</summary>
-    public Task<string> ReceiveExpectedAsync(Guid receiptId, IReadOnlyDictionary<int, decimal> received, CancellationToken ct = default)
+    public Task<string> ReceiveExpectedAsync(Guid receiptId, IReadOnlyDictionary<int, decimal> received, CancellationToken ct = default) =>
+        ReceiveExpectedAsync(receiptId, received.Select(r => new ReceivedLine(r.Key, r.Value)).ToList(), ct);
+
+    /// <summary>Recibe una recepción esperada con los lotes (y vencimientos) o series de cada línea.</summary>
+    public Task<string> ReceiveExpectedAsync(Guid receiptId, IReadOnlyList<ReceivedLine> lines, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Receive);
-        Require(received.Values.All(q => q >= 0), T("error.las_cantidades_no_pueden_ser"));
-        Require(received.Values.Any(q => q > 0), T("error.indica_al_menos_una_cantidad"));
+        Require(lines.All(l => l.Quantity >= 0), T("error.las_cantidades_no_pueden_ser"));
+        Require(lines.Any(l => l.Quantity > 0), T("error.indica_al_menos_una_cantidad"));
+        var received = lines.GroupBy(l => l.LineNo).ToDictionary(g => g.Key, g => g.ToList());
 
         return InTransactionAsync(async (c, tx, now) =>
         {
@@ -108,16 +113,18 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
             await InventoryService.RequireSiteAsync(c, tx, receipt.SiteId);
             await RequireSiteAccessAsync(c, tx, receipt.SiteId);
 
-            var lines = await c.QueryAsync("SELECT line_no, item_id, unit_cost FROM receipt_lines WHERE receipt_id = $id ORDER BY line_no",
+            var expected = await c.QueryAsync("SELECT line_no, item_id, unit_cost FROM receipt_lines WHERE receipt_id = $id ORDER BY line_no",
                 r => (LineNo: r.Int("line_no"), ItemId: r.Guid("item_id"), Cost: r.DecOrNull("unit_cost")), tx, ("$id", receiptId));
             var posted = new List<QuantityLine>();
-            foreach (var (lineNo, itemId, cost) in lines)
+            foreach (var (lineNo, itemId, cost) in expected)
             {
-                var quantity = received.GetValueOrDefault(lineNo);
+                var got = received.GetValueOrDefault(lineNo) ?? [];
+                var quantity = got.Sum(l => l.Quantity);
                 await c.ExecAsync("UPDATE receipt_lines SET received_qty = $qty WHERE receipt_id = $id AND line_no = $no", tx,
                     ("$qty", quantity), ("$id", receiptId), ("$no", lineNo));
                 if (quantity > 0)
-                    posted.Add(new QuantityLine(itemId, quantity, cost));
+                    posted.Add(new QuantityLine(itemId, quantity, cost, null, got.SelectMany(l => l.Lots ?? []).ToList(),
+                        got.SelectMany(l => l.Serials ?? []).ToList()));
             }
 
             await c.ExecAsync("UPDATE receipts SET status = 'received', received_at = $now WHERE id = $id", tx, ("$id", receiptId), ("$now", now));
@@ -248,8 +255,10 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
             var quantity = g.Sum(l => l.Quantity);
             var costed = g.Where(l => l.UnitCost is not null).ToList();
             decimal? cost = costed.Count == 0 ? null : costed.Sum(l => l.Quantity * l.UnitCost!.Value) / costed.Sum(l => l.Quantity);
-            return new QuantityLine(g.Key, quantity, cost is { } c0 ? Valuation.Unit(c0) : null);
+            return new QuantityLine(g.Key, quantity, cost is { } c0 ? Valuation.Unit(c0) : null, null,
+                g.SelectMany(l => l.Lots ?? []).ToList(), g.SelectMany(l => l.Serials ?? []).ToList());
         }).ToList();
+        var today = await LotLedger.TodayAsync(c, tx, now);
 
         var posted = new List<QuantityLine>();
         foreach (var line in perItem)
@@ -259,12 +268,18 @@ public sealed class ReceiptService(WmsDatabase db, IWmsContext context, TimeProv
                 posted.Add(line);
                 continue;
             }
+            var lots = await LotService.CheckShelfLifeAsync(c, tx, line.ItemId, line.Lots, today, Context.Can(WmsPermissions.ManageLots));
             var valued = await StockLedger.ApplyValuedAsync(c, tx, now, Context.UserName,
                 new StockLedger.Entry(siteId, line.ItemId, line.Quantity, MovementKinds.Receipt, "receipt", receiptId, number,
                     // Mismo Id en todos los equipos: si dos reciben la misma orden de compra sin conexión, el stock sube
                     // una sola vez (gana la versión que el hub recibió primero).
-                    MovementId: DeterministicId.From("receipt_line", receiptId, line.ItemId), UnitCost: line.UnitCost));
-            posted.Add(line with { UnitCost = valued.UnitCost, TotalCost = valued.TotalCost });
+                    MovementId: DeterministicId.From("receipt_line", receiptId, line.ItemId), UnitCost: line.UnitCost,
+                    Lots: lots, Serials: line.Serials));
+            posted.Add(line with
+            {
+                UnitCost = valued.UnitCost, TotalCost = valued.TotalCost, Lots = valued.Lots is { Count: > 0 } l ? l : null,
+                Serials = valued.Serials is { Count: > 0 } s ? s : null,
+            });
         }
         await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.GoodsReceived,
             new GoodsReceived(receiptId, number, purchaseOrderId, siteId, supplierId, posted),

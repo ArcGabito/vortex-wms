@@ -179,5 +179,34 @@ internal static class Schema
         CREATE INDEX ix_item_barcodes_item ON item_barcodes (item_id);
         INSERT INTO item_barcodes (barcode, item_id) SELECT barcode, id FROM items WHERE barcode IS NOT NULL AND barcode <> '';
         """,
+        // 6: fase 3, lotes, vencimientos y series. stock_lots: saldo detallado por sede, artículo, ubicación (vacía hasta la
+        // fase 4) y lote (lot_code '' = sin lote: lo que salió sin poder asignarse a un lote). stock sigue siendo el total.
+        // movement_lots / movement_serials: qué lotes y series movió cada movimiento (trazabilidad). item_shelf_life: vida
+        // útil y días mínimos al recibir, propios del WMS.
+        """
+        CREATE TABLE stock_lots (
+            site_id TEXT NOT NULL, item_id TEXT NOT NULL, location TEXT NOT NULL DEFAULT '', lot_code TEXT NOT NULL,
+            expires_at TEXT, quantity REAL NOT NULL DEFAULT 0, status TEXT NOT NULL DEFAULT 'available', status_updated_at TEXT,
+            PRIMARY KEY (site_id, item_id, location, lot_code));
+        CREATE INDEX ix_stock_lots_item ON stock_lots (item_id, site_id);
+        CREATE INDEX ix_stock_lots_expiry ON stock_lots (expires_at);
+        CREATE INDEX ix_stock_lots_code ON stock_lots (lot_code);
+
+        CREATE TABLE serials (
+            item_id TEXT NOT NULL, serial TEXT NOT NULL, site_id TEXT, lot_code TEXT, status TEXT NOT NULL, updated_at TEXT NOT NULL,
+            PRIMARY KEY (item_id, serial));
+        CREATE INDEX ix_serials_serial ON serials (serial);
+
+        CREATE TABLE movement_lots (
+            movement_id TEXT NOT NULL, lot_code TEXT NOT NULL, expires_at TEXT, quantity REAL NOT NULL,
+            PRIMARY KEY (movement_id, lot_code));
+        CREATE INDEX ix_movement_lots_code ON movement_lots (lot_code);
+        CREATE TABLE movement_serials (
+            movement_id TEXT NOT NULL, serial TEXT NOT NULL, PRIMARY KEY (movement_id, serial));
+        CREATE INDEX ix_movement_serials_serial ON movement_serials (serial);
+
+        CREATE TABLE item_shelf_life (
+            item_id TEXT PRIMARY KEY, shelf_life_days INTEGER, min_days_on_receipt INTEGER, updated_at TEXT NOT NULL);
+        """,
     ];
 }

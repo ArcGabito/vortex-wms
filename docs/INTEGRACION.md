@@ -47,7 +47,9 @@ organización, trabaja en todas.
 Existencias por sede, reservas, ubicación (bin), stock mínimo, kardex (`movements`), recepciones, pedidos y
 despachos. Viven en la base local de cada equipo; lo que otros necesitan saber sale como evento. La ubicación y el
 stock mínimo por artículo y sede se comparten con los demás equipos del WMS por `wms.record.upserted` (gana el
-cambio más reciente).
+cambio más reciente). Desde la fase 3 también el saldo por lote (`stock_lots`, con vencimiento y estado), las series
+(`serials`) y qué lotes y series movió cada movimiento; el estado de un lote (`lot_status`) y la vida útil de un
+artículo (`shelf_life`) se comparten igual por `wms.record.upserted`.
 
 ## Eventos (versión 1)
 
@@ -63,12 +65,32 @@ cambio más reciente).
 | `order.picking_started` | Al empezar a preparar un pedido | Determinista por pedido |
 | `order.cancelled` | Al cancelar un pedido (libera la reserva) | Determinista por pedido |
 | `receipt.cancelled` | Al anular una recepción esperada | Determinista por recepción |
-| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede | Id nuevo; `updatedAt` en los datos |
+| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede, el estado de un lote o la vida útil de un artículo | Id nuevo; `updatedAt` en los datos |
 
 `stock.adjusted` lleva el delta y la existencia resultante (`quantityDelta`, `quantityOnHand`), el motivo y la
 referencia del documento. Desde la fase 1 también el costo con que se valorizó el movimiento (`unitCost`, `totalCost`,
 en la moneda de la empresa) y, en ventas y despachos, el importe de venta (`saleAmount`); las líneas de
 `goods.received` llevan `unitCost` y `totalCost`. Son campos aditivos.
+
+Desde la fase 3, `stock.adjusted` lleva `lots` (`lotCode`, `quantity` con el signo del movimiento y `expiresAt`) y
+`serials` del movimiento; las líneas de `goods.received`, `stock.transferred` y `shipment.dispatched` llevan sus `lots`
+y `serials`. `lotCode` vacío es lo que salió sin lote (stock anterior a controlar lote, o ventas de caja que no
+alcanzaron). El WMS lee `serials` en las líneas de `sale.completed` si el POS las envía. Todos son aditivos.
+
+### Lotes, vencimientos y series
+
+- Un artículo con control por lote se recibe con su lote (y vencimiento; si falta y el artículo tiene vida útil, vence
+  a los días de vida útil). Un lote con menos días de vida que el mínimo solo lo acepta un supervisor (`lot.manage`).
+- Al despachar, transferir o vender sale primero lo que vence antes (**FEFO**), solo de lotes disponibles y no vencidos;
+  el stock sin lote va al final. Elegir otro lote requiere `lot.manage`. Lo vencido, en cuarentena o bloqueado solo
+  sale con un ajuste (merma).
+- Una venta de caja sale por FEFO aunque no alcancen los lotes (la venta ya ocurrió): lo que falta queda sin lote. La
+  anulación devuelve a los mismos lotes y series; una devolución, a los lotes de la venta en orden.
+- Un artículo con serie entra y sale con una serie por unidad; no se recibe una serie que ya está en stock ni se
+  despacha una que no está en la sede.
+- Si dos equipos procesan el mismo movimiento (una venta del POS) y FEFO les dio lotes distintos, todos se quedan con
+  la asignación que llegó al hub.
+- Trazabilidad: de un lote o serie a sus recepciones (proveedor), despachos (cliente), ventas y transferencias.
 
 ### Costo y kardex valorizado
 

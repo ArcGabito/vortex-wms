@@ -1,0 +1,122 @@
+@*
+    Lotes o series de una línea. Con lote: filas de código, cantidad y (al recibir) vencimiento, que deben sumar la cantidad
+    de la línea. Con serie: una serie por renglón, tantas como unidades. Si el artículo no controla lote ni serie, no muestra nada.
+*@
+@if (Item.Tracking == ItemTrackings.Lot)
+{
+    <div class="tracking">
+        @foreach (var lot in Lots)
+        {
+            <div class="tracking-row" @key="lot">
+                <input class="control" placeholder="@(T("tracking.lote"))" @bind="lot.Code" @bind:after="NotifyAsync" aria-label="@(T("tracking.lote"))" />
+                <input class="control" type="number" min="0" step="any" @bind="lot.Quantity" @bind:event="oninput" @bind:after="NotifyAsync" aria-label="@(T("tracking.cantidad"))" />
+                @if (WithExpiry)
+                {
+                    <input class="control" type="date" @bind="lot.ExpiresAt" @bind:after="NotifyAsync" aria-label="@(T("tracking.vence"))" title="@(T("tracking.vence"))" />
+                }
+                <button class="btn btn-ghost icon-btn sm" @onclick="() => RemoveAsync(lot)" aria-label="@(T("tracking.quitar"))"><Icon Name="x" Size="14" /></button>
+            </div>
+        }
+        <div class="tracking-foot">
+            <button class="link-btn" @onclick="AddAsync">+ @T("tracking.otro_lote")</button>
+            @if (Lots.Sum(l => l.Quantity) != Quantity)
+            {
+                <span class="warn-text">@T("tracking.suman_de", Fmt.Qty(Lots.Sum(l => l.Quantity)), Fmt.Qty(Quantity))</span>
+            }
+        </div>
+    </div>
+}
+else if (Item.Tracking == ItemTrackings.Serial)
+{
+    <div class="tracking">
+        @if (Available.Count > 0)
+        {
+            <div class="chips" style="flex-wrap:wrap">
+                @foreach (var serial in Available)
+                {
+                    <button class="chip @(SerialList.Contains(serial) ? "on" : "")" @onclick="() => ToggleAsync(serial)">@serial</button>
+                }
+            </div>
+        }
+        else
+        {
+            <textarea class="control" rows="2" placeholder="@(T("tracking.una_serie_por_renglon"))" @bind="SerialsText" @bind:event="oninput" @bind:after="NotifyAsync"></textarea>
+        }
+        <div class="tracking-foot">
+            <span class="@(SerialList.Count == Quantity ? "muted" : "warn-text")">@T("tracking.series_de", SerialList.Count, Fmt.Qty(Quantity))</span>
+        </div>
+    </div>
+}
+
+@code {
+    public sealed class LotDraft
+    {
+        public string Code { get; set; } = "";
+        public decimal Quantity { get; set; }
+        public DateOnly? ExpiresAt { get; set; }
+    }
+
+    [Parameter, EditorRequired] public ItemRow Item { get; set; } = null!;
+
+    /// <summary>Cantidad de la línea en la unidad base: los lotes deben sumarla y las series ser tantas.</summary>
+    [Parameter] public decimal Quantity { get; set; }
+
+    [Parameter, EditorRequired] public List<LotDraft> Lots { get; set; } = [];
+
+    /// <summary>Series escritas (una por renglón) o elegidas de <see cref="Available"/>.</summary>
+    [Parameter] public string SerialsText { get; set; } = "";
+    [Parameter] public EventCallback<string> SerialsTextChanged { get; set; }
+
+    /// <summary>Si se pide el vencimiento (al recibir).</summary>
+    [Parameter] public bool WithExpiry { get; set; }
+
+    /// <summary>Series en stock para elegir (al sacar); vacío para escribirlas.</summary>
+    [Parameter] public IReadOnlyList<string> Available { get; set; } = [];
+
+    [Parameter] public EventCallback Changed { get; set; }
+
+    private List<string> SerialList => Parse(SerialsText);
+
+    public static List<string> Parse(string? text) =>
+        (text ?? "").Split(['\n', ',', ';'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+    public static List<LotQuantity>? ToLots(IEnumerable<LotDraft> lots) =>
+        lots.Where(l => l.Quantity > 0 && !string.IsNullOrWhiteSpace(l.Code)).Select(l => new LotQuantity(l.Code.Trim(), l.Quantity, l.ExpiresAt))
+            .ToList() is { Count: > 0 } list ? list : null;
+
+    protected override void OnParametersSet()
+    {
+        if (Item.Tracking == ItemTrackings.Lot && Lots.Count == 0)
+            Lots.Add(new LotDraft { Quantity = Quantity });
+        else if (Lots.Count == 1 && Lots[0].Quantity != Quantity && string.IsNullOrEmpty(Lots[0].Code))
+            Lots[0].Quantity = Quantity;
+    }
+
+    private Task AddAsync()
+    {
+        Lots.Add(new LotDraft { Quantity = Math.Max(0, Quantity - Lots.Sum(l => l.Quantity)) });
+        return NotifyAsync();
+    }
+
+    private Task RemoveAsync(LotDraft lot)
+    {
+        Lots.Remove(lot);
+        return NotifyAsync();
+    }
+
+    private async Task ToggleAsync(string serial)
+    {
+        var list = SerialList;
+        if (!list.Remove(serial))
+            list.Add(serial);
+        SerialsText = string.Join("\n", list);
+        await SerialsTextChanged.InvokeAsync(SerialsText);
+        await NotifyAsync();
+    }
+
+    private async Task NotifyAsync()
+    {
+        await SerialsTextChanged.InvokeAsync(SerialsText);
+        await Changed.InvokeAsync();
+    }
+}

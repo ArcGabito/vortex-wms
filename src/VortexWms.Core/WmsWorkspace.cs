@@ -18,6 +18,7 @@ public sealed class WmsWorkspace
         Inventory = new InventoryService(db, context, clock);
         Orders = new OrderService(db, context, clock);
         Receipts = new ReceiptService(db, context, clock);
+        Lots = new LotService(db, context, clock);
         Audit = new AuditService(db, context, clock);
         Conflicts = new SyncConflictService(db, context, clock);
         SyncStore = new SqliteSyncStore(db);
@@ -29,6 +30,7 @@ public sealed class WmsWorkspace
     public InventoryService Inventory { get; }
     public OrderService Orders { get; }
     public ReceiptService Receipts { get; }
+    public LotService Lots { get; }
     public AuditService Audit { get; }
     public SyncConflictService Conflicts { get; }
     public SqliteSyncStore SyncStore { get; }

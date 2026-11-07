@@ -34,6 +34,9 @@ public static class WmsPermissions
     /// <summary>Ver costos, valor del inventario a costo, costo de lo vendido y margen.</summary>
     public const string ViewCosts = "cost.view";
 
+    /// <summary>Elegir un lote distinto al que sugiere FEFO, cambiar el estado de un lote y aceptar lotes con poca vida.</summary>
+    public const string ManageLots = "lot.manage";
+
     public const string Operator = "operario";
     public const string Supervisor = "supervisor";
     public const string ReadOnly = "consulta";
@@ -41,7 +44,7 @@ public static class WmsPermissions
     public static readonly PermissionMatrix Matrix = PermissionMatrix.Create(Operator,
         (ReadOnly, []),
         (Operator, [Receive, Pick, Dispatch, Transfer]),
-        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts]));
+        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts, ManageLots]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -58,6 +61,7 @@ public static class WmsPermissions
         EditCatalog => T("permiso.editcatalog"),
         ViewAudit => T("permiso.viewaudit"),
         ViewCosts => T("permiso.viewcosts"),
+        ManageLots => T("permiso.managelots"),
         _ => permission,
     };
 }

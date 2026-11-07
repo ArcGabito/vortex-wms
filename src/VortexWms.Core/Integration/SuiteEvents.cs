@@ -29,7 +29,8 @@ public static class SuiteEvents
 }
 
 /// <summary>Línea con cantidad; en <c>goods.received</c> también su costo (fase 1, aditivo).</summary>
-public sealed record QuantityLine(Guid ItemId, decimal Quantity, decimal? UnitCost = null, decimal? TotalCost = null);
+public sealed record QuantityLine(Guid ItemId, decimal Quantity, decimal? UnitCost = null, decimal? TotalCost = null,
+    IReadOnlyList<Domain.LotQuantity>? Lots = null, IReadOnlyList<string>? Serials = null);
 
 // ---------- Publicados por el WMS ----------
 
@@ -45,9 +46,11 @@ public sealed record GoodsReceived(
 /// </summary>
 /// Fase 1 agrega (aditivos) el costo con que se valorizó el movimiento (<c>unitCost</c>, <c>totalCost</c>, en la moneda
 /// de la empresa) y, en ventas y despachos, el importe de venta (<c>saleAmount</c>).
+/// Fase 3 agrega (aditivos) <c>lots</c> (lote, cantidad con signo y vencimiento) y <c>serials</c> del movimiento.
 public sealed record StockAdjusted(
     Guid SiteId, Guid ItemId, decimal QuantityDelta, decimal QuantityOnHand, string Reason, string? Reference,
-    decimal? UnitCost = null, decimal? TotalCost = null, decimal? SaleAmount = null);
+    decimal? UnitCost = null, decimal? TotalCost = null, decimal? SaleAmount = null, IReadOnlyList<Domain.LotQuantity>? Lots = null,
+    IReadOnlyList<string>? Serials = null);
 
 /// <summary><c>stock.transferred</c>. Extiende v1 con <c>number</c>.</summary>
 public sealed record StockTransferred(Guid TransferId, string Number, Guid FromSiteId, Guid ToSiteId, IReadOnlyList<QuantityLine> Lines);
@@ -59,7 +62,9 @@ public sealed record ShipmentDispatched(
 
 // ---------- Consumidos por el WMS ----------
 
-public sealed record SaleLine(Guid ItemId, string? Sku, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total);
+/// <summary>Línea de venta del POS. <c>serials</c> (aditivo, fase 3): las series vendidas, si el POS las registró.</summary>
+public sealed record SaleLine(Guid ItemId, string? Sku, decimal Quantity, decimal UnitPrice, decimal Discount, decimal Total,
+    IReadOnlyList<string>? Serials = null);
 
 public sealed record SaleCompleted(
     Guid SaleId, string? Number, Guid SiteId, Guid? CustomerId, string? CurrencyCode, decimal Total, IReadOnlyList<SaleLine>? Lines);
@@ -98,6 +103,12 @@ public static class WmsRecordKinds
 {
     /// <summary>Ubicación y stock mínimo de un artículo en una sede. Id: <c>{siteId}:{itemId}</c>.</summary>
     public const string StockSettings = "stock_settings";
+
+    /// <summary>Estado de un lote en una sede (disponible, cuarentena, bloqueado). Id: <c>{siteId}:{itemId}:{lotCode}</c>.</summary>
+    public const string LotStatus = "lot_status";
+
+    /// <summary>Vida útil y días mínimos al recibir de un artículo. Id: <c>{itemId}</c>.</summary>
+    public const string ShelfLife = "shelf_life";
 }
 
 /// <summary>
@@ -107,3 +118,5 @@ public static class WmsRecordKinds
 public sealed record WmsRecord(string Kind, string Id, DateTimeOffset UpdatedAt, System.Text.Json.JsonElement Data);
 
 public sealed record StockSettingsData(Guid SiteId, Guid ItemId, string? Bin, decimal? ReorderPoint);
+
+public sealed record LotStatusData(Guid SiteId, Guid ItemId, string LotCode, string Status, string? Note = null);
