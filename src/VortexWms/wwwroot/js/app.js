@@ -5,5 +5,6 @@ window.vortex = {
         const r = el.getBoundingClientRect();
         return [r.top, r.left, r.bottom, r.right, window.innerWidth, window.innerHeight];
     },
-    focus: (el) => { if (el) el.focus(); },
+    // En pantallas táctiles no se enfoca solo: abriría el teclado en pantalla y taparía media pantalla.
+    focus: (el) => { if (el && !window.matchMedia("(hover: none) and (pointer: coarse)").matches) el.focus(); },
 };

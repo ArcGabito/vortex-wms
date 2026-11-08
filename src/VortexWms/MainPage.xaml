@@ -3,6 +3,7 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
              xmlns:components="clr-namespace:VortexWms.Components"
              x:Class="VortexWms.MainPage"
+             SafeAreaEdges="All"
              BackgroundColor="{StaticResource PageBackground}">
 
     <BlazorWebView x:Name="blazorWebView" HostPage="wwwroot/index.html" BackgroundColor="{StaticResource PageBackground}">
