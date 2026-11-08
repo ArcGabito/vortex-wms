@@ -1,0 +1,341 @@
+@page "/tareas"
+@inherits WmsPage
+
+<SectionContent SectionName="page-title">@T("tasks.tareas")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("tasks.tareas")</h2>
+            <p>@T("tasks.explica")</p>
+        </div>
+        @if (Session.Can(WmsPermissions.ManageTasks))
+        {
+            <button class="btn btn-dark" @onclick="Nueva"><Icon Name="plus" Size="18" />@T("tasks.nueva")</button>
+        }
+    </div>
+
+    <div class="filters">
+        @if (Session.Can(WmsPermissions.ManageTasks))
+        {
+            <div class="segmented">
+                <button class="@(_mine ? "on" : "")" @onclick="() => CambiarAsync(true, _closed)">@T("tasks.mias")</button>
+                <button class="@(!_mine ? "on" : "")" @onclick="() => CambiarAsync(false, _closed)">@T("tasks.equipo")</button>
+            </div>
+        }
+        <label class="check-row" style="align-self:center"><input type="checkbox" checked="@_closed" @onchange="e => CambiarAsync(_mine, e.Value is true)" /><span>@T("tasks.ver_cerradas")</span></label>
+    </div>
+
+    @if (_tasks.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="clipboard" Title="@(T("tasks.nada_pendiente"))" Text="@(_mine ? T("tasks.nada_pendiente_explica") : T("tasks.equipo_sin_tareas"))" />
+    }
+    else
+    {
+        <div class="task-list">
+            @foreach (var t in _tasks)
+            {
+                <div class="card task-card @(t.IsPending ? "" : "closed")" @key="t.Id">
+                    <div class="stat-icon task-icon"><Icon Name="@Icono(t.Kind)" Size="20" /></div>
+                    <div class="task-main">
+                        <div class="task-title">@t.Title</div>
+                        <div class="task-meta">
+                            @Tipo(t.Kind)@(t.Quantity is { } q ? $" · {Fmt.Qty(q)}" : "")@(t.SiteName is null ? "" : $" · {t.SiteName}")
+                            @if (!_mine)
+                            {
+                                <span> · @(t.AssigneeName ?? "—")</span>
+                            }
+                        </div>
+                        @if (t.Notes is not null)
+                        {
+                            <div class="task-notes">@t.Notes</div>
+                        }
+                        <div class="task-meta faint">
+                            @if (t.IsPending)
+                            {
+                                @T("tasks.asignada_por", t.CreatedBy ?? "—", Fmt.Ago(t.CreatedAt))
+                            }
+                            else
+                            {
+                                @(t.Status == TaskStatuses.Done ? T("tasks.hecha_por", t.DoneBy ?? "—", Fmt.Ago(t.DoneAt ?? t.CreatedAt)) : T("tasks.anulada"))
+                            }
+                        </div>
+                    </div>
+                    @if (t.IsPending)
+                    {
+                        <div class="task-actions">
+                            @if (Destino(t) is { } destino && (t.AssigneeId == Session.UserId || Session.Can(WmsPermissions.ManageTasks)))
+                            {
+                                <a class="btn btn-dark btn-sm" href="@destino"><Icon Name="play" Size="16" />@T("tasks.ir")</a>
+                            }
+                            @if (t.AssigneeId == Session.UserId || Session.Can(WmsPermissions.ManageTasks))
+                            {
+                                <button class="btn btn-sm" @onclick="() => HechaAsync(t)"><Icon Name="check" Size="16" />@T("tasks.hecha")</button>
+                            }
+                            @if (Session.Can(WmsPermissions.ManageTasks))
+                            {
+                                <KebabMenu>
+                                    <button @onclick="() => Reasignar(t)"><Icon Name="user" Size="18" />@T("tasks.reasignar")</button>
+                                    <hr />
+                                    <button class="danger" @onclick="() => AnularAsync(t)"><Icon Name="ban" Size="18" />@T("tasks.anular")</button>
+                                </KebabMenu>
+                            }
+                        </div>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (_nueva is { } n)
+{
+    <Modal Title="@(T("tasks.nueva"))" Subtitle="@(T("tasks.nueva_explica"))" Error="@_error" OnClose="() => _nueva = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("tasks.que_hay_que_hacer")</label>
+                <div class="segmented" style="flex-wrap:wrap">
+                    @foreach (var kind in TaskKinds.All)
+                    {
+                        <button class="@(n.Kind == kind ? "on" : "")" @onclick="() => CambiarTipoAsync(n, kind)"><Icon Name="@Icono(kind)" Size="16" />@Tipo(kind)</button>
+                    }
+                </div>
+            </div>
+            <div class="field">
+                <label>@T("tasks.almacen")</label>
+                <select class="select" value="@n.SiteId" @onchange="e => CambiarSedeAsync(n, e.Value?.ToString())">
+                    @foreach (var s in _sites)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+            @if (n.Kind == TaskKinds.Pick)
+            {
+                <div class="field">
+                    <label>@T("tasks.pedido")</label>
+                    <select class="select" value="@n.OrderId" @onchange="e => n.OrderId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">@T("tasks.elige_el_pedido")</option>
+                        @foreach (var o in _orders.Where(o => o.SiteId == n.SiteId))
+                        {
+                            <option value="@o.Id">@o.Number · @(o.CustomerName ?? "—")</option>
+                        }
+                    </select>
+                </div>
+            }
+            else if (n.Kind is TaskKinds.Replenish or TaskKinds.Count)
+            {
+                <div class="field">
+                    <label>@T("tasks.ubicacion")</label>
+                    <select class="select" value="@n.LocationId" @onchange="e => n.LocationId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                        <option value="">@T("tasks.elige_la_ubicacion")</option>
+                        @foreach (var l in _locations.Where(l => n.Kind != TaskKinds.Replenish || (l.Kind == LocationKinds.Picking && l.FixedItemId is not null)))
+                        {
+                            <option value="@l.Id">@l.Code@(l.FixedItemName is null ? "" : $" · {l.FixedItemName}")</option>
+                        }
+                    </select>
+                </div>
+            }
+            <div class="field">
+                <label>@T("tasks.para_quien")</label>
+                <select class="select" value="@n.AssigneeId" @onchange="e => n.AssigneeId = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null">
+                    <option value="">@T("tasks.operario_opcion")</option>
+                    @foreach (var op in _operators)
+                    {
+                        <option value="@op.Id">@op.Name@(op.PendingTasks > 0 ? $" · {T("tasks.pendientes", op.PendingTasks)}" : "")</option>
+                    }
+                </select>
+                <span class="hint">@T("tasks.operarios_explica")</span>
+            </div>
+            <div class="field">
+                <label>@T("tasks.notas")</label>
+                <textarea class="control" rows="2" @bind="n.Notes"></textarea>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _nueva = null">@T("tasks.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="CrearAsync">@T("tasks.asignar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_reasignar is { } r)
+{
+    <Modal Title="@(T("tasks.reasignar"))" Subtitle="@r.Title" Size="sm" Error="@_error" OnClose="() => _reasignar = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("tasks.para_quien")</label>
+                <select class="select" @bind="_para">
+                    <option value="">@T("tasks.operario_opcion")</option>
+                    @foreach (var op in _operators)
+                    {
+                        <option value="@op.Id">@op.Name</option>
+                    }
+                </select>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _reasignar = null">@T("tasks.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="ReasignarAsync">@T("tasks.asignar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "pedido")] public Guid? PedidoQuery { get; set; }
+
+    private IReadOnlyList<TaskRow> _tasks = [];
+    private IReadOnlyList<OperatorRow> _operators = [];
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<OrderRow> _orders = [];
+    private IReadOnlyList<LocationRow> _locations = [];
+    private bool _mine = true, _closed, _busy, _abrioDesdePedido;
+    private NuevaModel? _nueva;
+    private TaskRow? _reasignar;
+    private string? _error, _para;
+
+    private sealed class NuevaModel
+    {
+        public string Kind { get; set; } = TaskKinds.Pick;
+        public Guid SiteId { get; set; }
+        public Guid? OrderId { get; set; }
+        public Guid? LocationId { get; set; }
+        public Guid? AssigneeId { get; set; }
+        public string? Notes { get; set; }
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _tasks = await Wms.Tasks.GetTasksAsync(_mine, _closed);
+        // Desde un pedido ("Asignar preparación") se abre la tarea ya elegida.
+        if (PedidoQuery is { } pedido && !_abrioDesdePedido && Session.Can(WmsPermissions.ManageTasks))
+        {
+            _abrioDesdePedido = true;
+            _mine = false;
+            _tasks = await Wms.Tasks.GetTasksAsync(_mine, _closed);
+            var order = await Wms.Orders.GetAsync(pedido);
+            await Nueva();
+            if (order is not null && _nueva is { } n)
+            {
+                n.SiteId = order.SiteId;
+                n.OrderId = order.Id;
+            }
+        }
+    }
+
+    private async Task CambiarAsync(bool mine, bool closed)
+    {
+        (_mine, _closed) = (mine, closed);
+        await ReloadAsync();
+    }
+
+    private async Task Nueva()
+    {
+        _error = null;
+        _operators = await Wms.Tasks.GetOperatorsAsync();
+        _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
+        _orders = (await Wms.Orders.GetOrdersAsync(null, "open", 1, 200)).Items.Where(o => !o.PendingApproval).ToList();
+        _nueva = new NuevaModel { SiteId = Session.DefaultSiteId ?? _sites.FirstOrDefault()?.Id ?? Guid.Empty };
+        await CargarUbicacionesAsync(_nueva.SiteId);
+    }
+
+    private async Task CambiarSedeAsync(NuevaModel n, string? value)
+    {
+        if (!Guid.TryParse(value, out var site))
+            return;
+        (n.SiteId, n.OrderId, n.LocationId) = (site, null, null);
+        await CargarUbicacionesAsync(site);
+    }
+
+    private Task CambiarTipoAsync(NuevaModel n, string kind)
+    {
+        (n.Kind, n.OrderId, n.LocationId) = (kind, null, null);
+        return Task.CompletedTask;
+    }
+
+    private async Task CargarUbicacionesAsync(Guid site) =>
+        _locations = site == Guid.Empty ? [] : await Wms.Locations.GetLocationsAsync(site);
+
+    private async Task CrearAsync()
+    {
+        if (_nueva is not { } n)
+            return;
+        if (n.AssigneeId is not { } who)
+        {
+            _error = T("tasks.elige_al_operario");
+            return;
+        }
+        var name = _operators.FirstOrDefault(o => o.Id == who)?.Name ?? "?";
+        _busy = true;
+        _error = await TryAsync(() => Wms.Tasks.CreateAsync(new TaskDraft(n.SiteId, n.Kind, who, name, null, n.OrderId, n.LocationId,
+            Notes: n.Notes)), T("tasks.asignada_a", name));
+        _busy = false;
+        if (_error is null)
+        {
+            _nueva = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task Reasignar(TaskRow t)
+    {
+        _operators = await Wms.Tasks.GetOperatorsAsync();
+        (_reasignar, _para, _error) = (t, t.AssigneeId?.ToString(), null);
+    }
+
+    private async Task ReasignarAsync()
+    {
+        if (_reasignar is not { } t || !Guid.TryParse(_para, out var who))
+        {
+            _error = T("tasks.elige_al_operario");
+            return;
+        }
+        var name = _operators.FirstOrDefault(o => o.Id == who)?.Name ?? "?";
+        _busy = true;
+        _error = await TryAsync(() => Wms.Tasks.ReassignAsync(t.Id, who, name), T("tasks.asignada_a", name));
+        _busy = false;
+        if (_error is null)
+        {
+            _reasignar = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task HechaAsync(TaskRow t)
+    {
+        await RunAsync(() => Wms.Tasks.CompleteAsync(t.Id), T("tasks.tarea_hecha"));
+        await ReloadAsync();
+    }
+
+    private async Task AnularAsync(TaskRow t)
+    {
+        await RunAsync(() => Wms.Tasks.CancelAsync(t.Id), T("tasks.tarea_anulada"));
+        await ReloadAsync();
+    }
+
+    /// <summary>Adónde lleva la tarea: al recorrido del pedido, al reabastecimiento, a guardar o al inventario.</summary>
+    private static string? Destino(TaskRow t) => t.Kind switch
+    {
+        TaskKinds.Pick when t.OrderId is { } o => $"preparar/{o}",
+        TaskKinds.Replenish => "reabastecer",
+        TaskKinds.Putaway => "guardado",
+        TaskKinds.Count => t.LocationId is null ? "inventario" : "ubicaciones",
+        _ => null,
+    };
+
+    public static string Icono(string kind) => kind switch
+    {
+        TaskKinds.Pick => "barcode",
+        TaskKinds.Replenish => "sync",
+        TaskKinds.Count => "list",
+        _ => "inbox",
+    };
+
+    public static string Tipo(string kind) => kind switch
+    {
+        TaskKinds.Pick => T("tasks.tipo_preparar"),
+        TaskKinds.Replenish => T("tasks.tipo_reabastecer"),
+        TaskKinds.Count => T("tasks.tipo_contar"),
+        _ => T("tasks.tipo_guardar"),
+    };
+}

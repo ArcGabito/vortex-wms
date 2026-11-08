@@ -75,7 +75,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | WMS-40 | Ubicación por artículo en texto libre | Hecho | — |
 | WMS-41 | Mapa de ubicaciones (zona, pasillo, rack, nivel, posición) con código escaneable | Hecho | 4a |
 | WMS-42 | Stock por ubicación y traslados internos | Hecho | 4a |
-| WMS-43 | Reabastecimiento de ubicaciones de picking | Pendiente | 4b |
+| WMS-43 | Reabastecimiento de ubicaciones de picking | Hecho | 4b2 |
 | WMS-44 | Ubicación óptima según rotación (slotting) | Pendiente | 9 |
 
 ### Salidas
@@ -83,10 +83,10 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
 | WMS-50 | Pedidos del ERP, CRM y WMS; preparación y despacho; ventas del POS | Hecho | — |
-| WMS-51 | Picking guiado por pedido y por grupo, con recorrido ordenado | Parcial: por pedido; falta por grupo | 4b1 |
+| WMS-51 | Picking guiado por pedido y por grupo, con recorrido ordenado | Hecho | 4b |
 | WMS-52 | Olas de picking planificadas por transportista u hora de corte | Pendiente | 9 |
 | WMS-53 | Despacho parcial con saldo pendiente | Hecho | 4b1 |
-| WMS-54 | Empaque en bultos con peso y contenido | Pendiente | 4b |
+| WMS-54 | Empaque en bultos con peso y contenido | Hecho | 4b2 |
 | WMS-55 | Integración con transportistas (tarifa, etiqueta y seguimiento) | Pendiente | 9 |
 
 ### Control de inventario
@@ -107,7 +107,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | WMS-71 | Roles (`operario`, `supervisor`, `consulta`, `administrador`) validados en Core | Hecho | 0 |
 | WMS-72 | Sedes por usuario | Hecho | 0 |
 | WMS-73 | Auditoría de ajustes, recepciones anuladas y pedidos cancelados | Hecho | 0 |
-| WMS-74 | Cola de tareas por operario asignada por el supervisor | Pendiente | 4b |
+| WMS-74 | Cola de tareas por operario asignada por el supervisor | Hecho | 4b2 |
 | WMS-75 | Productividad por operario | Pendiente | 6 |
 
 ### Abastecimiento, reportes y etiquetas
@@ -303,6 +303,18 @@ parte con su Id). Un pedido que llega por aprobar (`approvalStatus: "pending"`, 
 prepara hasta `order.approved`. Pruebas en `PickingTests`. Además, el buscador y los campos de escaneo ya no pierden
 dígitos con lectores rápidos.
 
+**Estado 4b2 (2026-11):** hecha. **Empaque:** lo tomado se arma en bultos numerados con peso, nota y contenido (no más
+de lo que queda por empacar); salen con el despacho y `shipment.dispatched` los lleva en `packages` (aditivo). Los
+bultos, como lo tomado, son del equipo que prepara. **Reabastecimiento:** las ubicaciones de picking con artículo fijo
+tienen mínimo y máximo; al llegar al mínimo aparecen en Reabastecer con cuánto traer hasta el máximo y desde dónde (la
+primera de almacenamiento con stock libre o lo que no tiene ubicación), y se confirma escaneando la ubicación.
+**Tareas:** el supervisor asigna guardar, preparar, reabastecer o contar a un operario (los operarios se registran al
+abrir la app en cualquier equipo); cada uno ve las suyas. Un pedido con tarea de preparar solo lo prepara su responsable
+(o un supervisor), así dos equipos no preparan lo mismo; preparar se cierra al despachar y reabastecer al reabastecer.
+Tareas y operarios se replican como `wms.record.upserted` (`task`, `operator`). **Picking por grupo:** un recorrido
+para varios pedidos de la misma sede; cada parada dice cuánto va a cada pedido y lo tomado se reparte en el orden en
+que llegaron. Pruebas en `TasksTests`.
+
 ## Fase 5: conteos, devoluciones y mermas · M
 
 - **Conteo cíclico programado:** por ubicación, por clase ABC (A cada mes, B cada trimestre, C cada semestre) o por
@@ -384,7 +396,8 @@ Conviene enviar las de cada fase juntas, antes de empezarla.
 | Presentaciones con factor, código de barras y código SUNAT; control lote/serie; peso | Campos de `item` | 2 |
 | `lots` (`lotCode`, `quantity`, `expiresAt`) y `serials` en eventos de stock y de venta (hecho) | Campos aditivos | 3 |
 | `stock.relocated` | Evento | 4a |
-| `lines` en `shipment.dispatched` | Campo aditivo | 4b |
+| `lines` y `partial` en `shipment.dispatched` (hecho) | Campos aditivos | 4b1 |
+| `packages` en `shipment.dispatched` (hecho) | Campo aditivo | 4b2 |
 | `shipment.returned`, `goods.returned` | Eventos | 5 |
 | `purchase.requested` | Evento | 6 |
 | `quantityAvailable` en `stock.adjusted` | Campo aditivo | 7 |

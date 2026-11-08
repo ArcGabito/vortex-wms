@@ -62,7 +62,10 @@ public sealed record StockTransferred(Guid TransferId, string Number, Guid FromS
 /// <summary><c>shipment.dispatched</c>. Extiende v1 con <c>number</c>, <c>siteId</c> y <c>lines</c>.</summary>
 public sealed record ShipmentDispatched(
     Guid ShipmentId, Guid OrderId, Guid CustomerId, string? Carrier, string? TrackingNumber, string Number, Guid SiteId,
-    IReadOnlyList<QuantityLine> Lines, bool? Partial = null);
+    IReadOnlyList<QuantityLine> Lines, bool? Partial = null, IReadOnlyList<ShipmentPackage>? Packages = null);
+
+/// <summary>Bulto de un despacho (fase 4b2, aditivo): número dentro del pedido, peso y contenido.</summary>
+public sealed record ShipmentPackage(int Number, decimal? WeightKg, IReadOnlyList<QuantityLine> Lines);
 
 // ---------- Consumidos por el WMS ----------
 
@@ -120,6 +123,12 @@ public static class WmsRecordKinds
 
     /// <summary>Ubicación del mapa de una sede. Id: el de la ubicación.</summary>
     public const string Location = "location";
+
+    /// <summary>Tarea de un operario (guardar, preparar, reabastecer, contar). Id: el de la tarea.</summary>
+    public const string Task = "task";
+
+    /// <summary>Usuario que trabaja en el WMS (para asignarle tareas). Id: el del usuario en el hub.</summary>
+    public const string Operator = "operator";
 }
 
 /// <summary>
@@ -135,7 +144,15 @@ public sealed record LotStatusData(Guid SiteId, Guid ItemId, string LotCode, str
 /// <summary>Ubicación del mapa de una sede (registro propio del WMS; gana el cambio más reciente).</summary>
 public sealed record LocationData(
     Guid Id, Guid SiteId, string Code, string Kind, string? Zone, string? Aisle, string? Rack, string? Level, string? Position,
-    Guid? FixedItemId, bool IsActive);
+    Guid? FixedItemId, bool IsActive, decimal? MinQuantity = null, decimal? MaxQuantity = null);
+
+/// <summary>Tarea de un operario (registro propio del WMS; gana el cambio más reciente).</summary>
+public sealed record TaskData(
+    Guid Id, Guid SiteId, string Kind, string Title, Guid? OrderId, Guid? LocationId, Guid? ItemId, decimal? Quantity, Guid? AssigneeId,
+    string? AssigneeName, string Status, string? Notes, string? CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset? DoneAt, string? DoneBy);
+
+/// <summary>Usuario que usa el WMS en algún equipo, con su rol.</summary>
+public sealed record OperatorData(Guid Id, string Name, string? Role);
 
 /// <summary>
 /// <c>stock.relocated</c>: traslado interno de stock entre ubicaciones de una sede (no cambia el stock de la sede). Sin

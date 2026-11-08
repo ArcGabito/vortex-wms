@@ -1,0 +1,162 @@
+@page "/reabastecer"
+@inherits WmsPage
+@inject IJSRuntime JS
+
+<SectionContent SectionName="page-title">@T("replenish.reabastecer")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("replenish.reabastecer")</h2>
+            <p>@T("replenish.explica")</p>
+        </div>
+    </div>
+
+    @if (_rows.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="package-check" Title="@(T("replenish.todo_abastecido"))" Text="@(T("replenish.todo_abastecido_explica"))" />
+    }
+    else
+    {
+        <div class="task-list">
+            @foreach (var r in _rows)
+            {
+                <div class="card task-card" @key="r.LocationId">
+                    <div class="stat-icon task-icon"><Icon Name="pin" Size="20" /></div>
+                    <div class="task-main">
+                        <div class="task-title">@r.LocationCode · @r.ItemName</div>
+                        <div class="task-meta">@T("replenish.hay_de", Fmt.Qty(r.Current), Fmt.Qty(r.Min), Fmt.Qty(r.Max))</div>
+                        <div class="task-meta">
+                            @if (r.Suggested > 0)
+                            {
+                                <strong>@(r.FromCode is { } desde ? T("replenish.trae_desde", Fmt.Qty(r.Suggested), r.Unit, desde) : T("replenish.trae_suelto", Fmt.Qty(r.Suggested), r.Unit))</strong>
+                            }
+                            else
+                            {
+                                <span class="warn-text">@T("replenish.sin_stock")</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="task-actions">
+                        @if (r.Suggested > 0 && Session.Can(WmsPermissions.Relocate))
+                        {
+                            <button class="btn btn-dark btn-sm" @onclick="() => Abrir(r)"><Icon Name="sync" Size="16" />@T("replenish.reabastecer")</button>
+                        }
+                        @if (Session.Can(WmsPermissions.ManageTasks))
+                        {
+                            <button class="btn btn-sm" @onclick="() => Asignar(r)"><Icon Name="user" Size="16" />@T("replenish.asignar")</button>
+                        }
+                    </div>
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (_actual is { } a)
+{
+    <Modal Title="@(T("replenish.reabastecer_ubicacion", a.LocationCode))" Subtitle="@a.ItemName" Size="sm" Error="@_error" OnClose="() => _actual = null">
+        <ChildContent>
+            <p class="muted">@(a.FromCode is { } desde ? T("replenish.paso", Fmt.Qty(_cantidad), a.Unit, desde, a.LocationCode) : T("replenish.paso_suelto", Fmt.Qty(_cantidad), a.Unit, a.LocationCode))</p>
+            <div class="field">
+                <label>@T("replenish.cantidad")</label>
+                <input class="control" type="number" inputmode="decimal" min="0" step="any" @bind="_cantidad" />
+                <span class="hint">@T("replenish.disponible", Fmt.Qty(a.Available))</span>
+            </div>
+            <div class="field">
+                <label>@T("replenish.escanea_destino")</label>
+                <div class="input-icon"><Icon Name="pin" Size="16" /><input @ref="_destinoInput" class="control" placeholder="@a.LocationCode" @onkeydown="EnterAsync" /></div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _actual = null">@T("replenish.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="ConfirmarAsync"><Icon Name="check" Size="16" />@T("replenish.confirmar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_asignar is { } t)
+{
+    <Modal Title="@(T("replenish.asignar"))" Subtitle="@($"{t.LocationCode} · {t.ItemName}")" Size="sm" Error="@_error" OnClose="() => _asignar = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("replenish.para_quien")</label>
+                <select class="select" @bind="_para">
+                    <option value="">@T("tasks.operario_opcion")</option>
+                    @foreach (var op in _operators)
+                    {
+                        <option value="@op.Id">@op.Name</option>
+                    }
+                </select>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _asignar = null">@T("replenish.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="AsignarAsync">@T("replenish.asignar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<ReplenishmentRow> _rows = [];
+    private IReadOnlyList<OperatorRow> _operators = [];
+    private ReplenishmentRow? _actual, _asignar;
+    private decimal _cantidad;
+    private string? _error, _para;
+    private bool _busy;
+    private ElementReference _destinoInput;
+
+    protected override async Task LoadAsync() => _rows = await Wms.Locations.GetReplenishmentsAsync();
+
+    private void Abrir(ReplenishmentRow r) => (_actual, _cantidad, _error) = (r, r.Suggested, null);
+
+    private async Task Asignar(ReplenishmentRow r)
+    {
+        _operators = await Wms.Tasks.GetOperatorsAsync();
+        (_asignar, _para, _error) = (r, null, null);
+    }
+
+    private async Task EnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await ConfirmarAsync();
+    }
+
+    /// <summary>Se confirma escaneando la ubicación de picking: así no se deja en otro lugar.</summary>
+    private async Task ConfirmarAsync()
+    {
+        if (_actual is not { } a)
+            return;
+        var leido = (await JS.InvokeAsync<string?>("vortex.getValue", _destinoInput))?.Trim();
+        if (!string.Equals(leido, a.LocationCode, StringComparison.OrdinalIgnoreCase))
+        {
+            _error = T("replenish.ubicacion_equivocada", a.LocationCode);
+            return;
+        }
+        _busy = true;
+        _error = await TryAsync(() => Wms.Locations.ReplenishAsync(a.LocationId, a.FromLocationId, _cantidad),
+            T("replenish.listo", a.LocationCode));
+        _busy = false;
+        if (_error is null)
+        {
+            _actual = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task AsignarAsync()
+    {
+        if (_asignar is not { } r || !Guid.TryParse(_para, out var who))
+        {
+            _error = T("replenish.elige_al_operario");
+            return;
+        }
+        var name = _operators.FirstOrDefault(o => o.Id == who)?.Name ?? "?";
+        _busy = true;
+        _error = await TryAsync(() => Wms.Tasks.CreateAsync(new TaskDraft(r.SiteId, TaskKinds.Replenish, who, name, LocationId: r.LocationId,
+            ItemId: r.ItemId, Quantity: r.Suggested)), T("replenish.asignada_a", name));
+        _busy = false;
+        if (_error is null)
+            _asignar = null;
+    }
+}

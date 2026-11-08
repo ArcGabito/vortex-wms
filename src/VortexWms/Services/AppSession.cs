@@ -191,6 +191,8 @@ public sealed class AppSession(HubSettings settings, ISessionStore sessionStore,
         Workspace = await WmsWorkspace.OpenAsync(path, this);
         _sync = Workspace.SyncHandlers.Register(new VortexSync(_client!, _sessions!, Workspace.SyncStore, WmsSyncHandlers.SyncOptions));
         await ApplyRegionAsync();
+        // Queda en la lista de operarios de todos los equipos, para que el supervisor le asigne tareas.
+        await Workspace.Tasks.RegisterCurrentUserAsync();
         _pending = await Workspace.SyncStore.CountPendingAsync();
         _failed = (await Workspace.SyncStore.GetFailedAsync()).Count;
         _lastError = null;

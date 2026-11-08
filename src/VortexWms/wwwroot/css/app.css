@@ -1186,3 +1186,29 @@ table.data .strong { font-weight: 700; color: var(--ink); }
 .pick-code { font-variant-numeric: tabular-nums; min-width: 84px; }
 .pick-stop { width: 100%; text-align: left; background: none; border: 0; cursor: pointer; }
 .pick-stop.on { background: var(--accent-soft); border-radius: var(--radius); }
+
+/* ---------- Fase 4b2: tareas, reabastecimiento, empaque y picking por grupo ---------- */
+.hint { font-size: 12px; color: var(--text-3, var(--text-2)); margin: 0; line-height: 1.45; }
+.segmented button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+.chip { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; background: var(--surface-2); font-size: 12.5px; font-weight: 600; }
+.task-list { display: flex; flex-direction: column; gap: 10px; }
+.task-card { display: flex; align-items: flex-start; gap: 14px; padding: 14px 16px; }
+.task-card.closed { opacity: .65; }
+.task-icon { width: 40px; height: 40px; border-radius: 12px; flex: none; }
+.task-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+.task-title { font-weight: 700; overflow-wrap: anywhere; }
+.task-meta { font-size: 13px; color: var(--text-2); overflow-wrap: anywhere; }
+.task-notes { font-size: 13px; padding: 6px 10px; border-radius: 8px; background: var(--surface-2); white-space: pre-wrap; }
+.task-actions { display: flex; align-items: center; gap: 6px; flex: none; }
+.batch-splits { display: flex; flex-wrap: wrap; gap: 6px; }
+.group-row { padding: 10px 0; border-bottom: 1px solid var(--border); font-weight: 500; }
+.group-row:last-child { border-bottom: 0; }
+
+@media (max-width: 640px) {
+    /* En el celular las acciones de la tarea van debajo, a todo el ancho. */
+    .task-card { flex-wrap: wrap; }
+    .task-actions { width: 100%; padding-left: 54px; }
+    .task-actions .btn { flex: 1; }
+    /* Los selectores de varias líneas (tipo de tarea) muestran todas sus opciones. */
+    .segmented[style*="flex-wrap"] { overflow: visible; flex-wrap: wrap; }
+}

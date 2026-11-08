@@ -56,6 +56,11 @@ crearon el mismo código, el más viejo queda inactivo con el código marcado). 
 `stock.relocated` (`siteId`, `itemId`, `fromLocationId`, `toLocationId`, `quantity`, `reference`); sin `fromLocationId`
 sale de lo que no tiene ubicación. Se aplica una vez por Id y nunca mueve más de lo que hay en el origen.
 
+Fase 4b2: las ubicaciones de picking llevan `minQuantity` y `maxQuantity` (aditivos en `location`). Las tareas de los
+operarios (`task`: tipo, sede, pedido o ubicación, responsable, estado) y los operarios conocidos (`operator`: Id del
+usuario en el hub, nombre y rol) viajan como `wms.record.upserted`; gana el cambio más reciente. Lo tomado y los bultos
+de un pedido son del equipo que lo prepara y no se replican hasta el despacho.
+
 ## Eventos (versión 1)
 
 ### Qué publica el WMS
@@ -65,12 +70,12 @@ sale de lo que no tiene ubicación. Se aplica una vez por Id y nunca mueve más 
 | `stock.adjusted` | **Todo** cambio de stock (recepción, ajuste, transferencia, despacho, venta del POS) | Id del movimiento |
 | `goods.received` | Al recibir mercadería (directa o de una orden de compra) | Id de la recepción |
 | `stock.transferred` | Al transferir entre sedes | Id de la transferencia |
-| `shipment.dispatched` | Al despachar un pedido o una parte (`partial: true` si queda saldo) | Id del despacho (uno por parte) |
+| `shipment.dispatched` | Al despachar un pedido o una parte (`partial: true` si queda saldo; `packages` con número, `weightKg` y líneas de cada bulto, si se empacó) | Id del despacho (uno por parte) |
 | `order.created` | Al crear un pedido en el WMS (`source = WMS`) | Id del pedido |
 | `order.picking_started` | Al empezar a preparar un pedido | Determinista por pedido |
 | `order.cancelled` | Al cancelar un pedido (libera la reserva) | Determinista por pedido |
 | `receipt.cancelled` | Al anular una recepción esperada | Determinista por recepción |
-| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede, el estado de un lote, la vida útil de un artículo o una ubicación del mapa (`location`) | Id nuevo; `updatedAt` en los datos |
+| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede, el estado de un lote, la vida útil de un artículo o una ubicación del mapa (`location`); al asignar o cerrar una tarea (`task`) y al registrarse un operario (`operator`) | Id nuevo; `updatedAt` en los datos |
 | `stock.relocated` | Al guardar lo recibido o mover stock entre ubicaciones de una sede (no cambia el stock de la sede; solo lo consumen los demás equipos del WMS) | Id nuevo por traslado |
 
 `stock.adjusted` lleva el delta y la existencia resultante (`quantityDelta`, `quantityOnHand`), el motivo y la

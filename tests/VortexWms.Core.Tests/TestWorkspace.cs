@@ -62,8 +62,8 @@ public sealed class TestWorkspace(string deviceTag = "TEST", string role = "admi
     /// <summary>Usuario de prueba; el rol se puede cambiar a mitad de una prueba.</summary>
     public sealed class TestContext(string deviceTag, string role) : IWmsContext
     {
-        public Guid? UserId => Guid.Parse("00000000-0000-0000-0000-000000000001");
-        public string UserName => "Luis";
+        public Guid? UserId { get; set; } = Guid.Parse("00000000-0000-0000-0000-000000000001");
+        public string UserName { get; set; } = "Luis";
         public string DeviceTag => deviceTag;
         public Guid? DefaultSiteId => null;
         public string Role { get; set; } = role;

@@ -242,5 +242,25 @@ internal static class Schema
             id TEXT PRIMARY KEY, order_id TEXT NOT NULL, number TEXT NOT NULL, dispatched_at TEXT NOT NULL, partial INTEGER NOT NULL);
         CREATE INDEX ix_order_shipments_order ON order_shipments (order_id);
         """,
+        // 9: fase 4b2. Mínimo y máximo de las ubicaciones de picking (reabastecimiento); tareas por operario y operarios
+        // conocidos (registros del WMS, gana el más nuevo); bultos de cada pedido con su peso y contenido (de este equipo,
+        // como lo tomado, hasta despacharse).
+        """
+        ALTER TABLE locations ADD COLUMN min_qty REAL;
+        ALTER TABLE locations ADD COLUMN max_qty REAL;
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY, site_id TEXT NOT NULL, kind TEXT NOT NULL, title TEXT NOT NULL, order_id TEXT, location_id TEXT,
+            item_id TEXT, quantity REAL, assignee_id TEXT, assignee_name TEXT, status TEXT NOT NULL, notes TEXT, created_by TEXT,
+            created_at TEXT NOT NULL, done_at TEXT, done_by TEXT, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_tasks_assignee ON tasks (assignee_id, status);
+        CREATE INDEX ix_tasks_order ON tasks (order_id);
+        CREATE TABLE operators (id TEXT PRIMARY KEY, name TEXT NOT NULL, role TEXT, updated_at TEXT NOT NULL);
+        CREATE TABLE order_packages (
+            id TEXT PRIMARY KEY, order_id TEXT NOT NULL, number INTEGER NOT NULL, weight_kg REAL, notes TEXT, shipment_id TEXT,
+            created_at TEXT NOT NULL, user_name TEXT);
+        CREATE INDEX ix_order_packages_order ON order_packages (order_id);
+        CREATE TABLE order_package_lines (
+            package_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity REAL NOT NULL, PRIMARY KEY (package_id, item_id));
+        """,
     ];
 }

@@ -1,0 +1,186 @@
+@page "/preparar-grupo"
+@inherits WmsPage
+@inject IJSRuntime JS
+
+<SectionContent SectionName="page-title">@T("batch.preparar_en_grupo")</SectionContent>
+
+@if (_plan is { } plan)
+{
+    <div class="page">
+        <div class="page-head">
+            <div>
+                <h2>@T("batch.preparar_en_grupo")</h2>
+                <p>@string.Join(" · ", plan.Orders.Select(o => o.Number))</p>
+            </div>
+        </div>
+
+        <div class="pick-progress">
+            @foreach (var n in plan.Needs)
+            {
+                <div class="pick-need @(n.Picked >= n.Remaining ? "done" : "")" @key="n.ItemId">
+                    <span class="two-line"><span class="t1">@n.ItemName</span><span class="t2">#@n.Sku</span></span>
+                    <strong>@Fmt.Qty(n.Picked) / @Fmt.Qty(n.Remaining)</strong>
+                    @if (n.Missing > 0)
+                    {
+                        <span class="warn-text">@T("picking.faltan_en_la_sede", Fmt.Qty(n.Missing))</span>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_actual is { } stop)
+        {
+            <div class="card pick-card">
+                <div class="pick-where">
+                    <Icon Name="pin" Size="22" />
+                    <strong>@(stop.LocationCode ?? T("picking.sin_ubicacion"))</strong>
+                </div>
+                <div class="two-line"><span class="t1">@stop.ItemName</span><span class="t2">#@stop.Sku@(stop.Barcode is null ? "" : $" · {stop.Barcode}")</span></div>
+                <div class="pick-qty">@T("picking.toma", Fmt.Qty(stop.ToPick), stop.Unit)</div>
+                <div class="batch-splits">
+                    @foreach (var s in stop.Splits)
+                    {
+                        <span class="chip">@s.OrderNumber · @Fmt.Qty(s.Quantity)</span>
+                    }
+                </div>
+
+                @if (stop.LocationCode is not null)
+                {
+                    <div class="field">
+                        <label>@T("picking.escanea_la_ubicacion")</label>
+                        <div class="input-icon"><Icon Name="pin" Size="16" /><input @ref="_ubicacionInput" class="control" placeholder="@stop.LocationCode" @onkeydown="UbicacionEnterAsync" /></div>
+                    </div>
+                }
+                <div class="field">
+                    <label>@T("picking.escanea_el_articulo")</label>
+                    <div class="input-icon"><Icon Name="barcode" Size="16" /><input @ref="_articuloInput" class="control" placeholder="@(stop.Barcode ?? stop.Sku)" @onkeydown="EnterAsync" /></div>
+                </div>
+                <div class="field">
+                    <label>@T("picking.cantidad")</label>
+                    <input class="control" type="number" inputmode="decimal" min="0" step="any" @bind="_cantidad" />
+                </div>
+                @if (_error is not null)
+                {
+                    <div class="alert error"><Icon Name="alert" Size="18" /><span>@_error</span></div>
+                }
+                <button class="btn btn-dark btn-block" disabled="@(_busy || !Session.Can(WmsPermissions.Pick))" @onclick="ConfirmarAsync">
+                    <Icon Name="check" Size="18" />@T("picking.confirmar")
+                </button>
+            </div>
+        }
+        else if (plan.Complete)
+        {
+            <EmptyState Icon="package-check" Title="@(T("picking.todo_preparado"))" Text="@(T("batch.todo_preparado_explica"))" />
+        }
+        else
+        {
+            <EmptyState Icon="package-x" Title="@(T("picking.sin_stock"))" Text="@(T("picking.sin_stock_explica"))" />
+        }
+
+        @if (plan.Stops.Count > 1)
+        {
+            <div class="card">
+                <div class="card-head"><h3>@T("picking.recorrido")</h3></div>
+                <div class="card-body">
+                    @foreach (var s in plan.Stops)
+                    {
+                        <button class="list-row pick-stop @(s == _actual ? "on" : "")" @onclick="() => Elegir(s)">
+                            <strong class="pick-code">@(s.LocationCode ?? "—")</strong>
+                            <span class="two-line" style="flex:1"><span class="t1">@s.ItemName</span><span class="t2">@string.Join(", ", s.Splits.Select(x => x.OrderNumber))</span></span>
+                            <span class="end">@Fmt.Qty(s.ToPick)</span>
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        <div class="card">
+            <div class="card-head"><h3>@T("batch.pedidos")</h3></div>
+            <div class="card-body">
+                @foreach (var o in plan.Orders)
+                {
+                    <a class="list-row" href="@($"preparar/{o.Id}")" @key="o.Id">
+                        <span class="two-line" style="flex:1"><span class="t1">@o.Number</span><span class="t2">@(o.CustomerName ?? "—")</span></span>
+                        <span class="end muted">@T("batch.empacar_y_despachar")</span>
+                        <Icon Name="chevron-right" Size="16" />
+                    </a>
+                }
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "pedidos")] public string? Pedidos { get; set; }
+
+    private BatchPickPlan? _plan;
+    private BatchStop? _actual;
+    private string? _error;
+    private decimal _cantidad;
+    private bool _busy;
+    private ElementReference _articuloInput, _ubicacionInput;
+
+    private List<Guid> Ids => (Pedidos ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries)
+        .Select(p => Guid.TryParse(p, out var g) ? g : Guid.Empty).Where(g => g != Guid.Empty).ToList();
+
+    protected override async Task LoadAsync()
+    {
+        _plan = await Wms.Orders.GetBatchPickAsync(Ids);
+        var siguiente = _plan.Stops.FirstOrDefault(s => _actual is not null && s.ItemId == _actual.ItemId && s.LocationId == _actual.LocationId)
+            ?? _plan.Stops.FirstOrDefault();
+        // Sigue en la misma parada si aún le falta (con lo que queda por tomar); si no, la siguiente del recorrido.
+        Elegir(siguiente);
+    }
+
+    private void Elegir(BatchStop? stop)
+    {
+        (_actual, _error) = (stop, null);
+        _cantidad = stop?.ToPick ?? 0;
+    }
+
+    private async Task UbicacionEnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await JS.InvokeVoidAsync("vortex.focusNow", _articuloInput);
+    }
+
+    private async Task EnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await ConfirmarAsync();
+    }
+
+    /// <summary>Igual que el picking por pedido: se escanea la ubicación y el artículo; lo tomado se reparte entre los pedidos.</summary>
+    private async Task ConfirmarAsync()
+    {
+        if (_actual is not { } stop)
+            return;
+        _error = null;
+        var articulo = (await JS.InvokeAsync<string?>("vortex.getValue", _articuloInput))?.Trim();
+        if (stop.LocationCode is { } code)
+        {
+            var ubicacion = (await JS.InvokeAsync<string?>("vortex.getValue", _ubicacionInput))?.Trim();
+            if (!string.Equals(ubicacion, code, StringComparison.OrdinalIgnoreCase))
+            {
+                _error = T("picking.ubicacion_equivocada", code);
+                return;
+            }
+        }
+        var esEse = !string.IsNullOrEmpty(articulo) && (string.Equals(articulo, stop.Barcode, StringComparison.Ordinal) ||
+            string.Equals(articulo, stop.Sku, StringComparison.OrdinalIgnoreCase) || (await Wms.Master.ScanAsync(articulo))?.Item.Id == stop.ItemId);
+        if (!esEse)
+        {
+            _error = T("picking.articulo_equivocado", stop.ItemName);
+            return;
+        }
+        _busy = true;
+        _error = await TryAsync(() => Wms.Orders.ConfirmBatchPickAsync(stop.Splits.Select(s => s.OrderId).ToList(), stop.ItemId, stop.LocationId, _cantidad),
+            T("picking.tomado_de", Fmt.Qty(_cantidad), stop.LocationCode ?? T("picking.sin_ubicacion")));
+        _busy = false;
+        if (_error is null)
+        {
+            _actual = null;
+            await ReloadAsync();
+        }
+    }
+}

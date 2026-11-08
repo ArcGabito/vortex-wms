@@ -52,6 +52,8 @@ public sealed class LocationService(WmsDatabase db, IWmsContext context, TimePro
         var code = NormalizeCode(Clean(d.Code) ?? string.Join("-", new[] { d.Zone, d.Aisle, d.Rack, d.Level, d.Position }
             .Select(Clean).Where(p => p is not null)));
         Require(code.Length > 0, T("error.la_ubicacion_necesita_un_codigo"));
+        Require(d.MinQuantity is null or >= 0 && d.MaxQuantity is null or > 0, T("error.la_cantidad_debe_ser_mayor"));
+        Require(d.MinQuantity is null || d.MaxQuantity is null || d.MaxQuantity >= d.MinQuantity, T("error.maximo_menor_que_minimo"));
         return InTransactionAsync(async (c, tx, now) =>
         {
             await RequireSiteAccessAsync(c, tx, d.SiteId);
@@ -67,7 +69,7 @@ public sealed class LocationService(WmsDatabase db, IWmsContext context, TimePro
                     Require(await UnitsAsync(c, tx, existing) == 0, T("error.la_ubicacion_tiene_stock"));
             }
             var data = new LocationData(locationId, d.SiteId, code, d.Kind, Clean(d.Zone)?.ToUpperInvariant(), Clean(d.Aisle), Clean(d.Rack),
-                Clean(d.Level), Clean(d.Position), d.FixedItemId, d.IsActive);
+                Clean(d.Level), Clean(d.Position), d.FixedItemId, d.IsActive, d.MinQuantity, d.MaxQuantity);
             await PublishAsync(c, tx, now, data);
             await AuditAsync(c, tx, now, id is null ? "location.created" : "location.updated", "location", locationId, code, d.Kind);
             return locationId;
@@ -177,6 +179,15 @@ public sealed class LocationService(WmsDatabase db, IWmsContext context, TimePro
         Require(fromLocationId != toLocationId, T("error.elige_otra_ubicacion"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await RelocateCoreAsync(c, tx, now, siteId, itemId, fromLocationId, toLocationId, quantity, reference);
+            return 0;
+        }, ct);
+    }
+
+    private async Task RelocateCoreAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid siteId, Guid itemId,
+        Guid? fromLocationId, Guid? toLocationId, decimal quantity, string? reference)
+    {
+        {
             await RequireSiteAccessAsync(c, tx, siteId);
             foreach (var loc in new[] { fromLocationId, toLocationId })
             {
@@ -198,6 +209,75 @@ public sealed class LocationService(WmsDatabase db, IWmsContext context, TimePro
             var id = Guid.NewGuid();
             await ApplyAsync(c, tx, id, now, e, Context.UserName);
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.StockRelocated, e, subjectType: "item", subjectId: itemId.ToString(), id: id);
+        }
+    }
+
+    // ---------- Reabastecimiento (fase 4b2) ----------
+
+    /// <summary>
+    /// Ubicaciones de picking con artículo fijo que están en su mínimo o por debajo: cuánto traer para llegar al máximo
+    /// (o al mínimo si no tiene máximo) y desde dónde (la primera de almacenamiento con stock libre por código, si no lo
+    /// que no tiene ubicación). Lo ya tomado para pedidos no cuenta como libre.
+    /// </summary>
+    public async Task<IReadOnlyList<ReplenishmentRow>> GetReplenishmentsAsync(Guid? siteId = null, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        var targets = await c.QueryAsync($"""
+            SELECT l.id, l.site_id, l.code, l.fixed_item_id, l.min_qty, l.max_qty, i.sku, i.name, i.unit,
+                   COALESCE((SELECT SUM(s.quantity) FROM location_stock s WHERE s.location_id = l.id AND s.item_id = l.fixed_item_id), 0) AS current
+            FROM locations l JOIN items i ON i.id = l.fixed_item_id
+            WHERE l.kind = 'picking' AND l.is_active = 1 AND l.min_qty IS NOT NULL AND ($site IS NULL OR l.site_id = $site) {MySites("l.site_id")}
+            ORDER BY l.code
+            """, r => (Id: r.Guid("id"), Site: r.Guid("site_id"), Code: r.Str("code"), Item: r.Guid("fixed_item_id"), Min: r.Dec("min_qty"),
+                Max: r.DecOrNull("max_qty"), Sku: r.Str("sku"), Name: r.Str("name"), Unit: r.Str("unit"), Current: r.Dec("current")),
+            null, ("$site", siteId));
+        var rows = new List<ReplenishmentRow>();
+        foreach (var t in targets.Where(t => t.Current <= t.Min))
+        {
+            var target = Math.Max(t.Max ?? t.Min, t.Min);
+            var need = target - t.Current;
+            if (need <= 0)
+                continue;
+            var source = await c.FirstOrDefaultAsync("""
+                SELECT l.id, l.code, s.quantity - COALESCE((SELECT SUM(p.quantity) FROM order_picks p
+                                                          WHERE p.location_id = l.id AND p.item_id = s.item_id AND p.shipment_id IS NULL), 0) AS free
+                FROM location_stock s JOIN locations l ON l.id = s.location_id
+                WHERE s.site_id = $site AND s.item_id = $item AND l.kind = 'storage' AND l.is_active = 1
+                  AND s.quantity - COALESCE((SELECT SUM(p.quantity) FROM order_picks p
+                                             WHERE p.location_id = l.id AND p.item_id = s.item_id AND p.shipment_id IS NULL), 0) > 0
+                ORDER BY l.code LIMIT 1
+                """, r => new { Id = (Guid?)r.Guid("id"), Code = (string?)r.Str("code"), Free = r.Dec("free") }, null, ("$site", t.Site), ("$item", t.Item));
+            if (source is null)
+            {
+                var loose = await UnassignedAsync(c, null, t.Site, t.Item) - await c.ScalarAsync<decimal>("""
+                    SELECT COALESCE(SUM(p.quantity), 0) FROM order_picks p JOIN orders o ON o.id = p.order_id
+                    WHERE p.location_id IS NULL AND p.item_id = $item AND p.shipment_id IS NULL AND o.site_id = $site
+                    """, null, ("$site", t.Site), ("$item", t.Item));
+                source = new { Id = (Guid?)null, Code = (string?)null, Free = Math.Max(0, loose) };
+            }
+            rows.Add(new ReplenishmentRow(t.Site, t.Id, t.Code, t.Item, t.Sku, t.Name, t.Unit, t.Current, t.Min, target,
+                Math.Min(need, source.Free), source.Id, source.Code, source.Free));
+        }
+        return rows;
+    }
+
+    /// <summary>
+    /// Trae a la ubicación de picking su artículo fijo desde <paramref name="fromLocationId"/> (o desde lo que no tiene
+    /// ubicación) y da por hechas las tareas de reabastecer pendientes de esa ubicación.
+    /// </summary>
+    public Task ReplenishAsync(Guid locationId, Guid? fromLocationId, decimal quantity, CancellationToken ct = default)
+    {
+        RequirePermission(WmsPermissions.Relocate);
+        Require(quantity > 0, T("error.la_cantidad_debe_ser_mayor"));
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var target = await c.FirstOrDefaultAsync("SELECT site_id, code, fixed_item_id FROM locations WHERE id = $id",
+                r => new { Site = r.Guid("site_id"), Code = r.Str("code"), Item = r.GuidOrNull("fixed_item_id") }, tx, ("$id", locationId));
+            Require(target is not null, T("error.la_ubicacion_no_existe"));
+            Require(target!.Item is not null, T("error.la_ubicacion_no_tiene_articulo_fijo", target.Code));
+            Require(fromLocationId != locationId, T("error.elige_otra_ubicacion"));
+            await RelocateCoreAsync(c, tx, now, target.Site, target.Item!.Value, fromLocationId, locationId, quantity, T("tarea.reabastecer_ref"));
+            await TaskService.CloseOpenAsync(c, tx, now, Context.UserName, TaskKinds.Replenish, locationId: locationId);
             return 0;
         }, ct);
     }
@@ -294,12 +374,13 @@ public sealed class LocationService(WmsDatabase db, IWmsContext context, TimePro
             WHERE site_id = $site AND code = $code AND id <> $id
             """, tx, ("$site", d.SiteId), ("$code", d.Code), ("$id", d.Id));
         await c.ExecAsync("""
-            INSERT INTO locations (id, site_id, code, kind, zone, aisle, rack, level, position, fixed_item_id, is_active, updated_at)
-            VALUES ($id, $site, $code, $kind, $zone, $aisle, $rack, $level, $pos, $fixed, $active, $at)
+            INSERT INTO locations (id, site_id, code, kind, zone, aisle, rack, level, position, fixed_item_id, is_active, updated_at, min_qty, max_qty)
+            VALUES ($id, $site, $code, $kind, $zone, $aisle, $rack, $level, $pos, $fixed, $active, $at, $min, $max)
             ON CONFLICT (id) DO UPDATE SET site_id = $site, code = $code, kind = $kind, zone = $zone, aisle = $aisle, rack = $rack,
-                level = $level, position = $pos, fixed_item_id = $fixed, is_active = $active, updated_at = $at
+                level = $level, position = $pos, fixed_item_id = $fixed, is_active = $active, updated_at = $at, min_qty = $min, max_qty = $max
             """, tx, ("$id", d.Id), ("$site", d.SiteId), ("$code", d.Code), ("$kind", d.Kind), ("$zone", d.Zone), ("$aisle", d.Aisle),
-            ("$rack", d.Rack), ("$level", d.Level), ("$pos", d.Position), ("$fixed", d.FixedItemId), ("$active", d.IsActive), ("$at", updatedAt));
+            ("$rack", d.Rack), ("$level", d.Level), ("$pos", d.Position), ("$fixed", d.FixedItemId), ("$active", d.IsActive), ("$at", updatedAt),
+            ("$min", d.MinQuantity), ("$max", d.MaxQuantity));
         return true;
     }
 
@@ -338,7 +419,7 @@ public sealed class LocationService(WmsDatabase db, IWmsContext context, TimePro
     private static LocationRow ReadLocation(SqliteDataReader r) => new(
         r.Guid("id"), r.Guid("site_id"), r.Str("code"), r.Str("kind"), r.StrOrNull("zone"), r.StrOrNull("aisle"), r.StrOrNull("rack"),
         r.StrOrNull("level"), r.StrOrNull("position"), r.GuidOrNull("fixed_item_id"), r.StrOrNull("fixed_item_name"), r.Bool("is_active"),
-        r.Dec("units"), r.Int("items"));
+        r.Dec("units"), r.Int("items"), r.DecOrNull("min_qty"), r.DecOrNull("max_qty"));
 
     private static LocationStockRow ReadStock(SqliteDataReader r) => new(
         r.Guid("location_id"), r.Str("code"), r.Guid("item_id"), r.Str("sku"), r.Str("name"), r.Str("unit"), r.Dec("quantity"));

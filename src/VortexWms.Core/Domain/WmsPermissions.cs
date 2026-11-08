@@ -43,6 +43,9 @@ public static class WmsPermissions
     /// <summary>Guardar lo recibido y mover stock entre ubicaciones de una sede.</summary>
     public const string Relocate = "stock.relocate";
 
+    /// <summary>Asignar, reasignar y anular tareas de los operarios; preparar un pedido asignado a otro.</summary>
+    public const string ManageTasks = "task.manage";
+
     public const string Operator = "operario";
     public const string Supervisor = "supervisor";
     public const string ReadOnly = "consulta";
@@ -50,7 +53,7 @@ public static class WmsPermissions
     public static readonly PermissionMatrix Matrix = PermissionMatrix.Create(Operator,
         (ReadOnly, []),
         (Operator, [Receive, Pick, Dispatch, Transfer, Relocate]),
-        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts, ManageLots, ManageLocations, Relocate]));
+        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts, ManageLots, ManageLocations, Relocate, ManageTasks]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -70,6 +73,7 @@ public static class WmsPermissions
         ManageLots => T("permiso.managelots"),
         ManageLocations => T("permiso.managelocations"),
         Relocate => T("permiso.relocate"),
+        ManageTasks => T("permiso.managetasks"),
         _ => permission,
     };
 }

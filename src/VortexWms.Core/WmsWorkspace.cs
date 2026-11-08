@@ -20,6 +20,7 @@ public sealed class WmsWorkspace
         Receipts = new ReceiptService(db, context, clock);
         Lots = new LotService(db, context, clock);
         Locations = new LocationService(db, context, clock);
+        Tasks = new TaskService(db, context, clock);
         Audit = new AuditService(db, context, clock);
         Conflicts = new SyncConflictService(db, context, clock);
         SyncStore = new SqliteSyncStore(db);
@@ -33,6 +34,7 @@ public sealed class WmsWorkspace
     public ReceiptService Receipts { get; }
     public LotService Lots { get; }
     public LocationService Locations { get; }
+    public TaskService Tasks { get; }
     public AuditService Audit { get; }
     public SyncConflictService Conflicts { get; }
     public SqliteSyncStore SyncStore { get; }

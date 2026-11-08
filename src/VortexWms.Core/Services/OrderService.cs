@@ -194,6 +194,7 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
             Require(status == OrderStatuses.Pending, T("error.solo_se_puede_preparar_un"));
             await RequireApprovedAsync(c, tx, orderId);
             await RequireOrderSiteAsync(c, tx, orderId);
+            await TaskService.RequireMyPickAsync(c, tx, Context, orderId);
             var number = await c.ScalarAsync<string?>("SELECT number FROM orders WHERE id = $id", tx, ("$id", orderId));
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.OrderPickingStarted, new OrderPickingStarted(orderId, number),
                 subjectType: "order", subjectId: number, id: DeterministicId.From("order_picking", orderId));
@@ -248,11 +249,21 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
         Require(quantity > 0, T("error.la_cantidad_debe_ser_mayor"));
         return InTransactionAsync(async (c, tx, now) =>
         {
+            await ConfirmPickCoreAsync(c, tx, now, orderId, itemId, locationId, quantity);
+            return 0;
+        }, ct);
+    }
+
+    private async Task ConfirmPickCoreAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid orderId, Guid itemId,
+        Guid? locationId, decimal quantity)
+    {
+        {
             var order = await GetAsync(c, tx, orderId);
             Require(order is not null, T("error.el_pedido_no_existe"));
             Require(OrderStatuses.IsOpen(order!.Status), T("error.el_pedido_ya_fue_despachado"));
             await RequireApprovedAsync(c, tx, orderId);
             await RequireSiteAccessAsync(c, tx, order.SiteId);
+            await TaskService.RequireMyPickAsync(c, tx, Context, orderId);
 
             var lines = (await LinesAsync(c, tx, orderId)).Where(l => l.ItemId == itemId).ToList();
             Require(lines.Count > 0, T("error.el_articulo_no_esta_en_el_pedido"));
@@ -273,16 +284,211 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
                     subjectType: "order", subjectId: order.Number, id: DeterministicId.From("order_picking", orderId));
                 await c.ExecAsync("UPDATE orders SET status = 'picking' WHERE id = $id", tx, ("$id", orderId));
             }
-            return 0;
-        }, ct);
+        }
     }
 
-    /// <summary>Deshace una toma que aún no se despachó.</summary>
+    /// <summary>Deshace una toma que aún no se despachó (si lo que queda tomado alcanza para lo ya empacado).</summary>
     public Task UndoPickAsync(Guid pickId, CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.Pick);
         return InTransactionAsync(async (c, tx, now) =>
-            await c.ExecAsync("DELETE FROM order_picks WHERE id = $id AND shipment_id IS NULL", tx, ("$id", pickId)), ct);
+        {
+            var pick = await c.FirstOrDefaultAsync("SELECT order_id, item_id, quantity FROM order_picks WHERE id = $id AND shipment_id IS NULL",
+                r => new { Order = r.Guid("order_id"), Item = r.Guid("item_id"), Qty = r.Dec("quantity") }, tx, ("$id", pickId));
+            if (pick is null)
+                return 0;
+            var picked = (await PicksAsync(c, tx, pick.Order)).Where(p => p.ItemId == pick.Item).Sum(p => p.Quantity);
+            var packed = (await PackagesAsync(c, tx, pick.Order)).SelectMany(p => p.Lines).Where(l => l.ItemId == pick.Item).Sum(l => l.Quantity);
+            Require(picked - pick.Qty >= packed, T("error.ya_esta_empacado"));
+            return await c.ExecAsync("DELETE FROM order_picks WHERE id = $id AND shipment_id IS NULL", tx, ("$id", pickId));
+        }, ct);
+    }
+
+    // ---------- Picking por grupo (fase 4b2) ----------
+
+    /// <summary>
+    /// Un solo recorrido para varios pedidos: cada parada dice cuánto tomar de esa ubicación y para qué pedido. Los pedidos
+    /// se atienden en el orden dado (si no alcanza el stock, se completa primero el primero).
+    /// </summary>
+    public async Task<BatchPickPlan> GetBatchPickAsync(IReadOnlyList<Guid> orderIds, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        var orders = new List<OrderRow>();
+        foreach (var id in orderIds.Distinct())
+            if (await GetAsync(c, null, id) is { } o && OrderStatuses.IsOpen(o.Status))
+                orders.Add(o);
+        var used = new Dictionary<(Guid Item, Guid? Location), decimal>();
+        var stops = new Dictionary<(Guid Item, Guid? Location), (PickStop Stop, List<BatchSplit> Splits)>();
+        var needs = new List<PickNeed>();
+        var items = new Dictionary<Guid, (string Sku, string Name, string Unit, string? Barcode)>();
+        foreach (var order in orders.Where(o => !o.PendingApproval))
+        {
+            var picked = await PicksAsync(c, null, order.Id);
+            foreach (var item in (await LinesAsync(c, null, order.Id)).Where(l => l.Tracked).GroupBy(l => l.ItemId))
+            {
+                if (!items.TryGetValue(item.Key, out var info))
+                    items[item.Key] = info = (await c.QueryAsync("SELECT sku, name, unit, barcode FROM items WHERE id = $id",
+                        r => (r.Str("sku"), r.Str("name"), r.Str("unit"), r.StrOrNull("barcode")), null, ("$id", item.Key)))
+                        .DefaultIfEmpty(("?", "?", "", null)).First();
+                var remaining = item.Sum(l => l.Quantity - l.Shipped);
+                var already = picked.Where(p => p.ItemId == item.Key).Sum(p => p.Quantity);
+                var left = Math.Max(0, remaining - already);
+                foreach (var spot in await AvailableSpotsAsync(c, null, order.SiteId, item.Key, order.Id))
+                {
+                    if (left <= 0)
+                        break;
+                    var key = (item.Key, spot.LocationId);
+                    var free = spot.Quantity - used.GetValueOrDefault(key);
+                    if (free <= 0)
+                        continue;
+                    var take = Math.Min(left, free);
+                    used[key] = used.GetValueOrDefault(key) + take;
+                    if (!stops.TryGetValue(key, out var stop))
+                        stop = (new PickStop(item.Key, info.Sku, info.Name, info.Unit, info.Barcode, spot.LocationId, spot.Code, 0), []);
+                    stop.Splits.Add(new BatchSplit(order.Id, order.Number, take));
+                    stops[key] = (stop.Stop with { ToPick = stop.Stop.ToPick + take }, stop.Splits);
+                    left -= take;
+                }
+                needs.Add(new PickNeed(item.Key, info.Sku, info.Name, remaining, already, left));
+            }
+        }
+        var merged = needs.GroupBy(n => n.ItemId).Select(g => new PickNeed(g.Key, g.First().Sku, g.First().ItemName, g.Sum(n => n.Remaining),
+            g.Sum(n => n.Picked), g.Sum(n => n.Missing))).ToList();
+        var ordered = stops.Values.Select(s => new BatchStop(s.Stop.ItemId, s.Stop.Sku, s.Stop.ItemName, s.Stop.Unit, s.Stop.Barcode,
+                s.Stop.LocationId, s.Stop.LocationCode, s.Stop.ToPick, s.Splits))
+            .OrderBy(s => s.LocationCode is null).ThenBy(s => s.LocationCode, StringComparer.Ordinal).ThenBy(s => s.ItemName).ToList();
+        return new BatchPickPlan(orders, ordered, merged);
+    }
+
+    /// <summary>
+    /// Confirma lo tomado de una ubicación para el grupo: se reparte entre los pedidos en su orden (a cada uno, lo que le
+    /// falta), en una sola operación.
+    /// </summary>
+    public Task ConfirmBatchPickAsync(IReadOnlyList<Guid> orderIds, Guid itemId, Guid? locationId, decimal quantity, CancellationToken ct = default)
+    {
+        RequirePermission(WmsPermissions.Pick);
+        Require(quantity > 0, T("error.la_cantidad_debe_ser_mayor"));
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var left = quantity;
+            foreach (var orderId in orderIds.Distinct())
+            {
+                if (left <= 0)
+                    break;
+                var order = await GetAsync(c, tx, orderId);
+                if (order is null || !OrderStatuses.IsOpen(order.Status) || order.PendingApproval)
+                    continue;
+                var lines = (await LinesAsync(c, tx, orderId)).Where(l => l.ItemId == itemId).ToList();
+                var already = (await PicksAsync(c, tx, orderId)).Where(p => p.ItemId == itemId).Sum(p => p.Quantity);
+                var missing = lines.Sum(l => l.Quantity - l.Shipped) - already;
+                if (missing <= 0)
+                    continue;
+                var take = Math.Min(left, missing);
+                await ConfirmPickCoreAsync(c, tx, now, orderId, itemId, locationId, take);
+                left -= take;
+            }
+            Require(left < quantity, T("error.el_articulo_no_esta_en_el_pedido"));
+            Require(left <= 0, T("error.solo_faltan", quantity - left));
+            return 0;
+        }, ct);
+    }
+
+    // ---------- Empaque (fase 4b2) ----------
+
+    /// <summary>
+    /// Lo que se puede empacar de cada artículo (lo tomado; si no hubo picking, lo que falta despachar), lo ya empacado y
+    /// los bultos del pedido (los aún sin despachar y los de despachos anteriores).
+    /// </summary>
+    public async Task<PackingPlan> GetPackingAsync(Guid orderId, CancellationToken ct = default)
+    {
+        await using var c = await Db.OpenAsync(ct);
+        return await PackingAsync(c, null, orderId);
+    }
+
+    private static async Task<PackingPlan> PackingAsync(SqliteConnection c, SqliteTransaction? tx, Guid orderId)
+    {
+        var picks = await PicksAsync(c, tx, orderId);
+        var packages = await PackagesAsync(c, tx, orderId, includeShipped: true);
+        var open = packages.Where(p => p.ShipmentId is null).ToList();
+        var items = new List<PackItemRow>();
+        foreach (var item in (await LinesAsync(c, tx, orderId)).Where(l => l.Tracked).GroupBy(l => l.ItemId))
+        {
+            var remaining = item.Sum(l => l.Quantity - l.Shipped);
+            var packable = picks.Count > 0 ? picks.Where(p => p.ItemId == item.Key).Sum(p => p.Quantity) : remaining;
+            if (packable <= 0)
+                continue;
+            var info = (await c.QueryAsync("SELECT sku, name, unit FROM items WHERE id = $id",
+                r => (Sku: r.Str("sku"), Name: r.Str("name"), Unit: r.Str("unit")), tx, ("$id", item.Key))).DefaultIfEmpty((Sku: "?", Name: "?", Unit: "")).First();
+            items.Add(new PackItemRow(item.Key, info.Sku, info.Name, info.Unit, packable,
+                open.SelectMany(p => p.Lines).Where(l => l.ItemId == item.Key).Sum(l => l.Quantity)));
+        }
+        return new PackingPlan(items, packages);
+    }
+
+    /// <summary>Arma un bulto con su peso y contenido (no más de lo que queda por empacar de cada artículo). Devuelve su número.</summary>
+    public Task<int> AddPackageAsync(Guid orderId, decimal? weightKg, IReadOnlyList<DocumentLine> lines, string? notes = null,
+        CancellationToken ct = default)
+    {
+        RequirePermission(WmsPermissions.Pick);
+        Require(weightKg is null or > 0, T("error.el_peso_debe_ser_mayor"));
+        var content = lines.Where(l => l.Quantity > 0).GroupBy(l => l.ItemId).Select(g => (ItemId: g.Key, Quantity: g.Sum(l => l.Quantity))).ToList();
+        Require(content.Count > 0, T("error.el_bulto_esta_vacio"));
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var order = await GetAsync(c, tx, orderId);
+            Require(order is not null, T("error.el_pedido_no_existe"));
+            Require(OrderStatuses.IsOpen(order!.Status), T("error.el_pedido_ya_fue_despachado"));
+            await RequireSiteAccessAsync(c, tx, order.SiteId);
+            await TaskService.RequireMyPickAsync(c, tx, Context, orderId);
+            var plan = await PackingAsync(c, tx, orderId);
+            foreach (var line in content)
+            {
+                var item = plan.Items.FirstOrDefault(i => i.ItemId == line.ItemId);
+                Require(item is not null, T("error.el_articulo_no_esta_en_el_pedido"));
+                Require(line.Quantity <= item!.Left, T("error.solo_faltan_empacar", item.Left, item.ItemName));
+            }
+            var number = await c.ScalarAsync<long>("SELECT COALESCE(MAX(number), 0) + 1 FROM order_packages WHERE order_id = $id", tx, ("$id", orderId));
+            var id = Guid.NewGuid();
+            await c.ExecAsync("""
+                INSERT INTO order_packages (id, order_id, number, weight_kg, notes, created_at, user_name)
+                VALUES ($id, $order, $number, $weight, $notes, $at, $user)
+                """, tx, ("$id", id), ("$order", orderId), ("$number", number), ("$weight", weightKg), ("$notes", Clean(notes)), ("$at", now),
+                ("$user", Context.UserName));
+            foreach (var line in content)
+                await c.ExecAsync("INSERT INTO order_package_lines (package_id, item_id, quantity) VALUES ($id, $item, $qty)", tx,
+                    ("$id", id), ("$item", line.ItemId), ("$qty", line.Quantity));
+            return (int)number;
+        }, ct);
+    }
+
+    /// <summary>Deshace un bulto que aún no se despachó.</summary>
+    public Task RemovePackageAsync(Guid packageId, CancellationToken ct = default)
+    {
+        RequirePermission(WmsPermissions.Pick);
+        return InTransactionAsync(async (c, tx, now) =>
+        {
+            var removed = await c.ExecAsync("DELETE FROM order_packages WHERE id = $id AND shipment_id IS NULL", tx, ("$id", packageId));
+            if (removed > 0)
+                await c.ExecAsync("DELETE FROM order_package_lines WHERE package_id = $id", tx, ("$id", packageId));
+            return removed;
+        }, ct);
+    }
+
+    private static async Task<List<PackageRow>> PackagesAsync(SqliteConnection c, SqliteTransaction? tx, Guid orderId, bool includeShipped = false)
+    {
+        var packages = await c.QueryAsync("""
+            SELECT * FROM order_packages WHERE order_id = $id AND ($all = 1 OR shipment_id IS NULL) ORDER BY number
+            """, r => new PackageRow(r.Guid("id"), r.Int("number"), r.DecOrNull("weight_kg"), r.StrOrNull("notes"), r.GuidOrNull("shipment_id"),
+                r.Time("created_at"), r.StrOrNull("user_name"), []), tx, ("$id", orderId), ("$all", includeShipped));
+        for (var i = 0; i < packages.Count; i++)
+        {
+            var lines = await c.QueryAsync("""
+                SELECT pl.item_id, COALESCE(i.sku, '?') AS sku, COALESCE(i.name, '?') AS name, pl.quantity
+                FROM order_package_lines pl LEFT JOIN items i ON i.id = pl.item_id WHERE pl.package_id = $id ORDER BY i.name
+                """, r => new PackageLineRow(r.Guid("item_id"), r.Str("sku"), r.Str("name"), r.Dec("quantity")), tx, ("$id", packages[i].Id));
+            packages[i] = packages[i] with { Lines = lines };
+        }
+        return packages;
     }
 
     private sealed record Spot(Guid? LocationId, string? Code, decimal Quantity);
@@ -402,8 +608,12 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
                 await MarkShippedAsync(c, tx, orderId, line.ItemId, line.Ship);
             }
 
+            var packages = await PackagesAsync(c, tx, orderId);
             await c.ExecAsync("UPDATE order_picks SET shipment_id = $shipment WHERE order_id = $id AND shipment_id IS NULL", tx,
                 ("$id", orderId), ("$shipment", shipmentId));
+            await c.ExecAsync("UPDATE order_packages SET shipment_id = $shipment WHERE order_id = $id AND shipment_id IS NULL", tx,
+                ("$id", orderId), ("$shipment", shipmentId));
+            await TaskService.CloseOpenAsync(c, tx, now, Context.UserName, TaskKinds.Pick, orderId: orderId);
             await c.ExecAsync("""
                 INSERT INTO order_shipments (id, order_id, number, dispatched_at, partial) VALUES ($id, $order, $number, $at, $partial)
                 """, tx, ("$id", shipmentId), ("$order", orderId), ("$number", shipmentNumber), ("$at", now), ("$partial", partial));
@@ -418,7 +628,9 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
                     shipmentNumber, from, perItem.Where(x => x.Ship > 0).Select(x => new QuantityLine(x.ItemId, x.Ship, null, null,
                         dispatched.GetValueOrDefault(x.ItemId)?.Lots is { Count: > 0 } lots ? lots.Select(l => l with { Quantity = -l.Quantity }).ToList() : null,
                         dispatched.GetValueOrDefault(x.ItemId)?.Serials is { Count: > 0 } s ? s : null)).ToList(),
-                    partial ? true : null),
+                    partial ? true : null,
+                    packages.Count == 0 ? null : packages.Select(p => new ShipmentPackage(p.Number, p.WeightKg,
+                        p.Lines.Select(l => new QuantityLine(l.ItemId, l.Quantity)).ToList())).ToList()),
                 subjectType: "shipment", subjectId: shipmentNumber, id: shipmentId);
             return shipmentNumber;
         }, ct);
@@ -499,6 +711,11 @@ public sealed class OrderService(WmsDatabase db, IWmsContext context, TimeProvid
                 await StockLedger.ReserveAsync(c, tx, now, site, line.ItemId, -(line.Quantity - line.Shipped));
         }
         await c.ExecAsync("DELETE FROM order_picks WHERE order_id = $id AND shipment_id IS NULL", tx, ("$id", orderId));
+        await c.ExecAsync("""
+            DELETE FROM order_package_lines WHERE package_id IN (SELECT id FROM order_packages WHERE order_id = $id AND shipment_id IS NULL);
+            DELETE FROM order_packages WHERE order_id = $id AND shipment_id IS NULL;
+            """, tx, ("$id", orderId));
+        await TaskService.CloseOpenAsync(c, tx, now, null, TaskKinds.Pick, orderId: orderId, status: TaskStatuses.Cancelled);
         await c.ExecAsync("UPDATE orders SET status = 'cancelled' WHERE id = $id", tx, ("$id", orderId));
     }
 
