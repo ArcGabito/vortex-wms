@@ -1,0 +1,211 @@
+@page "/preparar/{Id:guid}"
+@inherits WmsPage
+@inject IJSRuntime JS
+
+<SectionContent SectionName="page-title">@T("picking.preparar")</SectionContent>
+
+@if (_list is { } list)
+{
+    var order = list.Order;
+    <div class="page">
+        <div class="page-head">
+            <div>
+                <h2>@T("picking.pedido", order.Number)</h2>
+                <p>@(order.CustomerName ?? T("picking.sin_cliente")) · @(order.SiteName ?? "—")</p>
+            </div>
+            @if (Session.Can(WmsPermissions.Dispatch) && list.Picked.Count > 0)
+            {
+                <a class="btn btn-dark" href="@($"pedidos?despachar={order.Id}")"><Icon Name="truck" Size="18" />@(list.Complete ? T("picking.despachar") : T("picking.despachar_parcial"))</a>
+            }
+        </div>
+
+        @if (order.PendingApproval)
+        {
+            <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("picking.por_aprobar")</span></div>
+        }
+
+        <div class="pick-progress">
+            @foreach (var n in list.Needs)
+            {
+                <div class="pick-need @(n.Picked >= n.Remaining ? "done" : "")" @key="n.ItemId">
+                    <span class="two-line"><span class="t1">@n.ItemName</span><span class="t2">#@n.Sku</span></span>
+                    <strong>@Fmt.Qty(n.Picked) / @Fmt.Qty(n.Remaining)</strong>
+                    @if (n.Missing > 0)
+                    {
+                        <span class="warn-text">@T("picking.faltan_en_la_sede", Fmt.Qty(n.Missing))</span>
+                    }
+                </div>
+            }
+        </div>
+
+        @if (_actual is { } stop)
+        {
+            <div class="card pick-card">
+                <div class="pick-where">
+                    <Icon Name="pin" Size="22" />
+                    <strong>@(stop.LocationCode ?? T("picking.sin_ubicacion"))</strong>
+                </div>
+                <div class="two-line"><span class="t1">@stop.ItemName</span><span class="t2">#@stop.Sku@(stop.Barcode is null ? "" : $" · {stop.Barcode}")</span></div>
+                <div class="pick-qty">@T("picking.toma", Fmt.Qty(stop.ToPick), stop.Unit)</div>
+
+                @if (stop.LocationCode is not null)
+                {
+                    <div class="field">
+                        <label>@T("picking.escanea_la_ubicacion")</label>
+                        <div class="input-icon"><Icon Name="pin" Size="16" /><input @ref="_ubicacionInput" class="control" placeholder="@stop.LocationCode" @bind="_ubicacion" @bind:event="onchange" @onkeydown="UbicacionEnterAsync" /></div>
+                    </div>
+                }
+                <div class="field">
+                    <label>@T("picking.escanea_el_articulo")</label>
+                    <div class="input-icon"><Icon Name="barcode" Size="16" /><input @ref="_articuloInput" class="control" placeholder="@(stop.Barcode ?? stop.Sku)" @bind="_articulo" @bind:event="onchange" @onkeydown="EnterAsync" /></div>
+                </div>
+                <div class="field">
+                    <label>@T("picking.cantidad")</label>
+                    <input class="control" type="number" inputmode="decimal" min="0" step="any" @bind="_cantidad" />
+                </div>
+                @if (_error is not null)
+                {
+                    <div class="alert error"><Icon Name="alert" Size="18" /><span>@_error</span></div>
+                }
+                <button class="btn btn-dark btn-block" disabled="@(_busy || order.PendingApproval || !Session.Can(WmsPermissions.Pick))" @onclick="ConfirmarAsync">
+                    <Icon Name="check" Size="18" />@T("picking.confirmar")
+                </button>
+            </div>
+        }
+        else if (list.Complete)
+        {
+            <EmptyState Icon="package-check" Title="@(T("picking.todo_preparado"))" Text="@(T("picking.todo_preparado_explica"))" />
+        }
+        else
+        {
+            <EmptyState Icon="package-x" Title="@(T("picking.sin_stock"))" Text="@(T("picking.sin_stock_explica"))" />
+        }
+
+        @if (list.Stops.Count > 1)
+        {
+            <div class="card">
+                <div class="card-head"><h3>@T("picking.recorrido")</h3></div>
+                <div class="card-body">
+                    @foreach (var s in list.Stops)
+                    {
+                        <button class="list-row pick-stop @(s == _actual ? "on" : "")" @onclick="() => Elegir(s)">
+                            <strong class="pick-code">@(s.LocationCode ?? "—")</strong>
+                            <span class="two-line" style="flex:1"><span class="t1">@s.ItemName</span><span class="t2">#@s.Sku</span></span>
+                            <span class="end">@Fmt.Qty(s.ToPick)</span>
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+
+        @if (list.Picked.Count > 0)
+        {
+            <div class="card">
+                <div class="card-head"><h3>@T("picking.tomado")</h3></div>
+                <div class="card-body">
+                    @foreach (var p in list.Picked)
+                    {
+                        <div class="list-row" @key="p.Id">
+                            <strong class="pick-code">@(p.LocationCode ?? "—")</strong>
+                            <span class="two-line" style="flex:1"><span class="t1">@p.ItemName</span><span class="t2">@p.UserName · @Fmt.DateTime(p.PickedAt)</span></span>
+                            <span class="end">@Fmt.Qty(p.Quantity)</span>
+                            <button class="btn btn-ghost icon-btn sm" title="@(T("picking.deshacer"))" @onclick="() => DeshacerAsync(p)"><Icon Name="x" Size="16" /></button>
+                        </div>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+else if (!Loading)
+{
+    <div class="page"><EmptyState Icon="clipboard" Title="@(T("picking.no_existe"))" Text="" /></div>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private PickPlan? _list;
+    private PickStop? _actual;
+    private string? _ubicacion, _articulo, _error;
+    private decimal _cantidad;
+    private bool _busy;
+    private ElementReference _articuloInput, _ubicacionInput;
+
+    /// <summary>El lector manda Enter después del código: de la ubicación se pasa solo al artículo.</summary>
+    private async Task UbicacionEnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key != "Enter")
+            return;
+        _ubicacion = await JS.InvokeAsync<string?>("vortex.getValue", _ubicacionInput);
+        await JS.InvokeVoidAsync("vortex.focusNow", _articuloInput);
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _list = await Wms.Orders.GetPickListAsync(Id);
+        // Sigue en la misma parada si aún le falta; si no, la siguiente del recorrido.
+        var siguiente = _list?.Stops.FirstOrDefault(s => _actual is not null && s.ItemId == _actual.ItemId && s.LocationId == _actual.LocationId)
+            ?? _list?.Stops.FirstOrDefault();
+        if (siguiente != _actual)
+            Elegir(siguiente);
+    }
+
+    private void Elegir(PickStop? stop)
+    {
+        _actual = stop;
+        (_ubicacion, _articulo, _error) = (null, null, null);
+        _cantidad = stop?.ToPick ?? 0;
+    }
+
+    /// <summary>
+    /// Enter del lector en el campo del artículo: confirma. El evento de tecla llega antes que el cambio del campo, así
+    /// que el valor se lee del campo mismo (si no, se confirmaría con el código anterior).
+    /// </summary>
+    private async Task EnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await ConfirmarAsync();
+    }
+
+    /// <summary>Se confirma escaneando la ubicación y el artículo: así no se toma de otro lugar ni otro producto.</summary>
+    private async Task ConfirmarAsync()
+    {
+        if (_actual is not { } stop || _list is null)
+            return;
+        _error = null;
+        // Lo escrito o escaneado, leído del campo (puede no haber llegado aún el cambio).
+        _articulo = await JS.InvokeAsync<string?>("vortex.getValue", _articuloInput) ?? _articulo;
+        if (stop.LocationCode is not null)
+            _ubicacion = await JS.InvokeAsync<string?>("vortex.getValue", _ubicacionInput) ?? _ubicacion;
+        if (stop.LocationCode is { } code && !string.Equals(_ubicacion?.Trim(), code, StringComparison.OrdinalIgnoreCase))
+        {
+            _error = T("picking.ubicacion_equivocada", code);
+            return;
+        }
+        // El código del artículo, su SKU o el de una de sus presentaciones (la caja).
+        var leido = _articulo?.Trim();
+        var esEse = !string.IsNullOrEmpty(leido) && (string.Equals(leido, stop.Barcode, StringComparison.Ordinal) ||
+            string.Equals(leido, stop.Sku, StringComparison.OrdinalIgnoreCase) || (await Wms.Master.ScanAsync(leido))?.Item.Id == stop.ItemId);
+        if (!esEse)
+        {
+            _error = T("picking.articulo_equivocado", stop.ItemName);
+            return;
+        }
+        _busy = true;
+        _error = await TryAsync(() => Wms.Orders.ConfirmPickAsync(_list.Order.Id, stop.ItemId, stop.LocationId, _cantidad),
+            T("picking.tomado_de", Fmt.Qty(_cantidad), stop.LocationCode ?? T("picking.sin_ubicacion")));
+        _busy = false;
+        if (_error is null)
+        {
+            _actual = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task DeshacerAsync(PickRow pick)
+    {
+        await RunAsync(() => Wms.Orders.UndoPickAsync(pick.Id));
+        await ReloadAsync();
+    }
+}

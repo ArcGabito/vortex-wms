@@ -1173,3 +1173,16 @@ table.data .strong { font-weight: 700; color: var(--ink); }
 @media (max-width: 640px) {
     .topbar .spacer { display: none; }
 }
+
+/* ---------- Picking guiado ---------- */
+
+.pick-progress { display: flex; flex-direction: column; gap: 8px; }
+.pick-need { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--border); border-radius: var(--radius); min-width: 0; }
+.pick-need .two-line { flex: 1; min-width: 0; }
+.pick-need.done { background: var(--good-soft); border-color: transparent; }
+.pick-card { display: flex; flex-direction: column; gap: 14px; padding: 20px; }
+.pick-where { display: flex; align-items: center; gap: 10px; font-size: 26px; letter-spacing: .02em; }
+.pick-qty { font-size: 18px; font-weight: 700; }
+.pick-code { font-variant-numeric: tabular-nums; min-width: 84px; }
+.pick-stop { width: 100%; text-align: left; background: none; border: 0; cursor: pointer; }
+.pick-stop.on { background: var(--accent-soft); border-radius: var(--radius); }

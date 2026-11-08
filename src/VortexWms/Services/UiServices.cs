@@ -160,6 +160,7 @@ public static class Fmt
     {
         OrderStatuses.Pending => T("fmt.pendiente"),
         OrderStatuses.Picking => T("fmt.en_preparacion"),
+        OrderStatuses.Partial => T("fmt.parcial"),
         OrderStatuses.Dispatched => T("fmt.despachado"),
         OrderStatuses.Cancelled => T("fmt.cancelado"),
         _ => status,

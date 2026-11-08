@@ -3,13 +3,15 @@
 @inject IJSRuntime JS
 @*
     Buscador de artículos por SKU, nombre o código de barras. Funciona con lectores de código de barras que escriben
-    el código y envían Enter: si hay una coincidencia exacta, la elige sola. Si el código es el de una presentación
+    el código y envían Enter: si hay una coincidencia exacta, la elige sola. El campo no se enlaza con value: un lector
+    escribe más rápido de lo que la pantalla se vuelve a dibujar y cada dibujado devolvía un valor viejo (se perdían
+    dígitos); se vacía con vortex.setValue. Si el código es el de una presentación
     (DUN-14 de la caja), avisa también la presentación en OnPicked.
 *@
 <div class="picker">
     <div class="input-icon" @ref="_anchor">
         <Icon Name="barcode" Size="18" />
-        <input @ref="_input" class="control" placeholder="@Placeholder" value="@_term" autocomplete="off"
+        <input @ref="_input" class="control" placeholder="@Placeholder" autocomplete="off"
                @oninput="OnInput" @onkeydown="OnKeyAsync" @onfocus="OnFocusAsync" @onblur="OnBlur" />
     </div>
     @if (_open && _results.Count > 0)
@@ -102,6 +104,7 @@
     private async Task SelectAsync(ItemRow item, ItemPresentation? presentation = null)
     {
         _term = "";
+        await JS.InvokeVoidAsync("vortex.setValue", _input, "");
         _results = [];
         _open = false;
         await OnSelected.InvokeAsync(item);

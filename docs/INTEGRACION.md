@@ -65,7 +65,7 @@ sale de lo que no tiene ubicación. Se aplica una vez por Id y nunca mueve más 
 | `stock.adjusted` | **Todo** cambio de stock (recepción, ajuste, transferencia, despacho, venta del POS) | Id del movimiento |
 | `goods.received` | Al recibir mercadería (directa o de una orden de compra) | Id de la recepción |
 | `stock.transferred` | Al transferir entre sedes | Id de la transferencia |
-| `shipment.dispatched` | Al despachar un pedido | Id del despacho |
+| `shipment.dispatched` | Al despachar un pedido o una parte (`partial: true` si queda saldo) | Id del despacho (uno por parte) |
 | `order.created` | Al crear un pedido en el WMS (`source = WMS`) | Id del pedido |
 | `order.picking_started` | Al empezar a preparar un pedido | Determinista por pedido |
 | `order.cancelled` | Al cancelar un pedido (libera la reserva) | Determinista por pedido |
@@ -115,7 +115,8 @@ permiso `cost.view` (supervisor y administradores).
 | `sale.completed` (POS) | Descuenta stock en la sede de la venta (puede quedar negativo: la venta ya ocurrió) |
 | `sale.voided` (POS) | Devuelve exactamente lo que descontó esa venta |
 | `sale.returned` (POS) | Reingresa lo devuelto |
-| `order.created` (ERP, CRM) | Crea el pedido y reserva stock en su sede |
+| `order.created` (ERP, CRM) | Crea el pedido y reserva stock en su sede (si llega con `approvalStatus: "pending"`, no reserva ni se prepara) |
+| `order.approved` (ERP) | El pedido por aprobar reserva su stock y ya se puede preparar |
 | `purchase_order.created` (ERP) | Crea la recepción **Por recibir** |
 | `order.cancelled` (ERP, CRM u otro equipo WMS) | Cancela el pedido y libera la reserva; si ya se despachó, prevalece el despacho |
 | `stock.adjusted`, `goods.received`, `shipment.dispatched`, `order.picking_started`, `receipt.cancelled`, `wms.record.upserted` (otro equipo WMS) | Ver abajo |

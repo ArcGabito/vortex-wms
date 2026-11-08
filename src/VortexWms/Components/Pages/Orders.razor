@@ -58,8 +58,8 @@
                     <tbody>
                         @foreach (var o in page.Items)
                         {
-                            var (text, tone) = StatusPill.ForOrder(o.Status);
-                            var open = o.Status is OrderStatuses.Pending or OrderStatuses.Picking;
+                            var (text, tone) = o.PendingApproval && OrderStatuses.IsOpen(o.Status) ? (T("orders.por_aprobar"), "bad") : StatusPill.ForOrder(o.Status);
+                            var open = OrderStatuses.IsOpen(o.Status);
                             <tr @key="o.Id">
                                 <td>
                                     <div class="cell-main">
@@ -98,11 +98,15 @@
                                 <td><StatusPill Text="@text" Tone="@tone" /></td>
                                 <td class="actions-col">
                                     <KebabMenu>
-                                        @if (o.Status == OrderStatuses.Pending)
+                                        @if (open && !o.PendingApproval)
+                                        {
+                                            <button disabled="@(!Session.Can(WmsPermissions.Pick))" @onclick='() => Nav.NavigateTo($"preparar/{o.Id}")'><Icon Name="barcode" Size="18" />@T("orders.preparar_con_recorrido")</button>
+                                        }
+                                        @if (o.Status == OrderStatuses.Pending && !o.PendingApproval)
                                         {
                                             <button disabled="@(!Session.Can(WmsPermissions.Pick))" @onclick="() => StartPickingAsync(o)"><Icon Name="play" Size="18" />@T("orders.empezar_preparacion")</button>
                                         }
-                                        @if (open)
+                                        @if (open && !o.PendingApproval)
                                         {
                                             <button disabled="@(!Session.Can(WmsPermissions.Dispatch))" @onclick="() => OpenDispatch(o)"><Icon Name="truck" Size="18" />@T("orders.despachar_2")</button>
                                         }
@@ -227,6 +231,10 @@
                     }
                 </div>
             }
+            @if (dp.Partial)
+            {
+                <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("orders.despacho_parcial_explica")</span></div>
+            }
             @if (dp.SiteId != dp.Order.SiteId && dp.Order.SiteId != Guid.Empty)
             {
                 <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("orders.se_despachara_desde_otra_sede", dp.Order.SiteName)</span></div>
@@ -296,7 +304,12 @@
         public Guid? SiteId { get; set; } = order.SiteId == Guid.Empty ? null : order.SiteId;
         public string? Carrier { get; set; }
         public string? Tracking { get; set; }
+
+        /// <summary>Se preparó con recorrido y no está todo: sale lo tomado y el resto queda pendiente.</summary>
+        public bool Partial { get; set; }
     }
+
+    [SupplyParameterFromQuery(Name = "despachar")] public Guid? Despachar { get; set; }
 
     private sealed record DetailView(OrderRow Order, IReadOnlyList<OrderLineRow> Lines);
 
@@ -338,6 +351,12 @@
         {
             _page = _result.Pages;
             _result = await Wms.Orders.GetOrdersAsync(_search, _status, _page, PageSize);
+        }
+        // Viene de la pantalla de preparación: abre el despacho de ese pedido.
+        if (Despachar is { } id && _dispatch is null && await Wms.Orders.GetAsync(id) is { } toDispatch)
+        {
+            Despachar = null;
+            await OpenDispatch(toDispatch);
         }
     }
 
@@ -410,10 +429,15 @@
     {
         _error = null;
         var dispatch = new DispatchForm(order, await Wms.Orders.GetLinesAsync(order.Id));
+        // Si se preparó con recorrido sale lo tomado; si no, todo lo que falta despachar.
+        var list = await Wms.Orders.GetPickListAsync(order.Id);
+        var guided = list is { Picked.Count: > 0 };
+        dispatch.Partial = guided && !list!.Complete;
         foreach (var group in dispatch.Lines.GroupBy(l => l.ItemId))
         {
-            if (await Wms.Master.GetItemAsync(group.Key) is { Tracking: not ItemTrackings.None } item)
-                dispatch.Picks.Add(new TrackedPick(item, group.Sum(l => l.Quantity)));
+            var quantity = guided ? list!.Picked.Where(p => p.ItemId == group.Key).Sum(p => p.Quantity) : group.Sum(l => l.Quantity - l.Shipped);
+            if (quantity > 0 && await Wms.Master.GetItemAsync(group.Key) is { Tracking: not ItemTrackings.None } item)
+                dispatch.Picks.Add(new TrackedPick(item, quantity));
         }
         _dispatch = dispatch;
         await RefreshPicksAsync(dispatch);
@@ -447,7 +471,7 @@
         _busy = true;
         string? shipment = null;
         _error = await TryAsync(async () => shipment = await Wms.Orders.DispatchAsync(dp.Order.Id, dp.Carrier, dp.Tracking, site,
-            dp.Picks.Select(p => p.ToPick()).ToList()));
+            dp.Picks.Select(p => p.ToPick()).ToList(), allowPartial: dp.Partial));
         _busy = false;
         if (_error is null)
         {
