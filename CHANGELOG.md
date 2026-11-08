@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Ubicaciones y guardado guiado (fase 4a):** mapa por sede (tipo, zona, pasillo, rack, nivel, posición y artículo
+  fijo) con alta por rango; stock por ubicación y traslados internos (`stock.relocated`); pantalla Guardar con la
+  ubicación sugerida (la fija, la que ya tiene el artículo o una libre) que se confirma escaneando la etiqueta.
 - **Celular (Android):** la app respeta las barras del sistema (estado y gestos) con íconos oscuros; el botón Atrás
   cierra el diálogo o el menú abiertos y vuelve a la página anterior en vez de cerrar la app; las tablas se ven como
   tarjetas y las pestañas que no caben se deslizan; en pantallas táctiles no se abre el teclado solo. El negro de la
@@ -39,6 +42,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
   `totalCost` (aditivos).
 
 ### Fixed
+- La caja ilustrada del menú seguía en naranja: pasa a los morados de la marca. En el celular el título de la barra
+  superior ya no se corta.
 - Celular: los diálogos, el editor de líneas y los indicadores ya no se salen de la pantalla.
 - Una orden de compra o un pedido con el mismo artículo en dos líneas movía el stock de una sola línea (los
   movimientos ahora se agrupan por artículo).

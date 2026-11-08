@@ -208,5 +208,25 @@ internal static class Schema
         CREATE TABLE item_shelf_life (
             item_id TEXT PRIMARY KEY, shelf_life_days INTEGER, min_days_on_receipt INTEGER, updated_at TEXT NOT NULL);
         """,
+        // 7: fase 4a, ubicaciones. locations: mapa por sede (registro del WMS, gana el más nuevo). location_stock: cuánto
+        // hay de cada artículo en cada ubicación; lo que no está en ninguna es stock.on_hand menos la suma (por guardar).
+        // relocations: historial de traslados internos (stock.relocated), con Id para aplicarlos una sola vez.
+        """
+        CREATE TABLE locations (
+            id TEXT PRIMARY KEY, site_id TEXT NOT NULL, code TEXT NOT NULL, kind TEXT NOT NULL, zone TEXT, aisle TEXT, rack TEXT,
+            level TEXT, position TEXT, fixed_item_id TEXT, is_active INTEGER NOT NULL DEFAULT 1, updated_at TEXT NOT NULL);
+        CREATE UNIQUE INDEX ux_locations_code ON locations (site_id, code);
+        CREATE INDEX ix_locations_fixed ON locations (fixed_item_id);
+
+        CREATE TABLE location_stock (
+            site_id TEXT NOT NULL, location_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity REAL NOT NULL DEFAULT 0,
+            PRIMARY KEY (site_id, location_id, item_id));
+        CREATE INDEX ix_location_stock_item ON location_stock (item_id, site_id);
+
+        CREATE TABLE relocations (
+            id TEXT PRIMARY KEY, occurred_at TEXT NOT NULL, site_id TEXT NOT NULL, item_id TEXT NOT NULL, from_location_id TEXT,
+            to_location_id TEXT, quantity REAL NOT NULL, user_name TEXT, reference TEXT);
+        CREATE INDEX ix_relocations_item ON relocations (item_id, site_id, occurred_at);
+        """,
     ];
 }

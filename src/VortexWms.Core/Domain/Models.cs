@@ -269,3 +269,60 @@ public sealed record DashboardSummary(
     int ActiveItems, int Categories, decimal UnitsOnHand, decimal? UnitsChangePct, int OrdersOpen, int OrdersPicking,
     int Dispatched30d, decimal? DispatchedChangePct, int ReceiptsExpected, int LowStock, int OutOfStock, decimal? StockValue,
     string CurrencyCode, decimal? CostOfSales30d = null, decimal? Sales30d = null, decimal? Margin30d = null);
+
+// ---------- Ubicaciones (fase 4a) ----------
+
+/// <summary>Tipo de ubicación: dónde se recibe, se almacena, se prepara, se despacha o se aparta.</summary>
+public static class LocationKinds
+{
+    public const string Receiving = "receiving";
+    public const string Storage = "storage";
+    public const string Picking = "picking";
+    public const string Shipping = "shipping";
+    public const string Quarantine = "quarantine";
+
+    public static readonly IReadOnlyList<string> All = [Receiving, Storage, Picking, Shipping, Quarantine];
+
+    /// <summary>
+    /// Orden en que se descuenta el stock de las ubicaciones cuando baja sin indicar de dónde (despacho, venta, ajuste):
+    /// primero lo que está por salir, al final la cuarentena. Es fijo para que todos los equipos lleguen al mismo saldo.
+    /// </summary>
+    public static int ConsumeOrder(string kind) => kind switch
+    {
+        Shipping => 0,
+        Picking => 1,
+        Storage => 2,
+        Receiving => 3,
+        _ => 4,
+    };
+}
+
+public sealed record LocationRow(
+    Guid Id, Guid SiteId, string Code, string Kind, string? Zone, string? Aisle, string? Rack, string? Level, string? Position,
+    Guid? FixedItemId, string? FixedItemName, bool IsActive, decimal Units, int Items);
+
+/// <summary>Alta o edición de una ubicación. El código se arma con las partes si no se escribe.</summary>
+public sealed record LocationDraft(
+    Guid SiteId, string? Code, string Kind, string? Zone = null, string? Aisle = null, string? Rack = null, string? Level = null,
+    string? Position = null, Guid? FixedItemId = null, bool IsActive = true);
+
+/// <summary>Alta por rango: zona y pasillos y niveles de-a (A-01-01 … A-10-05).</summary>
+public sealed record LocationRange(Guid SiteId, string Zone, int AisleFrom, int AisleTo, int LevelFrom, int LevelTo, string Kind);
+
+public sealed record LocationStockRow(Guid LocationId, string LocationCode, Guid ItemId, string Sku, string ItemName, string Unit,
+    decimal Quantity);
+
+/// <summary>Lo recibido que todavía no tiene ubicación, con la que se sugiere.</summary>
+public sealed record PutawayRow(Guid SiteId, string? SiteName, Guid ItemId, string Sku, string ItemName, string Unit, decimal Pending,
+    Guid? SuggestedLocationId, string? SuggestedCode, string? SuggestionReason);
+
+public sealed record RelocationRow(Guid Id, DateTimeOffset OccurredAt, Guid ItemId, string ItemName, string? FromCode, string? ToCode,
+    decimal Quantity, string? UserName, string? Reference);
+
+/// <summary>Por qué se sugiere una ubicación al guardar.</summary>
+public static class PutawayReasons
+{
+    public const string Fixed = "fixed";
+    public const string SameItem = "same_item";
+    public const string Empty = "empty";
+}

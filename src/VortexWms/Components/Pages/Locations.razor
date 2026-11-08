@@ -1,0 +1,375 @@
+@page "/ubicaciones"
+@inherits WmsPage
+
+<SectionContent SectionName="page-title">@T("locations.ubicaciones")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("locations.mapa_de_ubicaciones")</h2>
+            <p>@T("locations.explica")</p>
+        </div>
+        @if (Session.Can(WmsPermissions.ManageLocations) && _site is not null)
+        {
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+                <button class="btn btn-outline" @onclick="AbrirRango"><Icon Name="layers" Size="18" />@T("locations.crear_por_rango")</button>
+                <button class="btn btn-dark" @onclick="Nueva"><Icon Name="plus" Size="18" />@T("locations.nueva_ubicacion")</button>
+            </div>
+        }
+    </div>
+
+    <div class="filters">
+        <div class="field">
+            <label>@T("locations.sede")</label>
+            <select class="select" value="@_site" @onchange="async e => { _site = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; await ReloadAsync(); }">
+                @foreach (var s in _sites)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field search">
+            <label>@T("locations.buscar")</label>
+            <div class="input-icon">
+                <Icon Name="search" Size="16" />
+                <input class="control" placeholder="@(T("locations.codigo_o_zona"))" value="@_search" @onchange="async e => { _search = e.Value?.ToString() ?? string.Empty; await ReloadAsync(); }" />
+            </div>
+        </div>
+    </div>
+
+    @if (_locations.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="pin" Title="@(T("locations.sin_ubicaciones"))" Text="@(T("locations.sin_ubicaciones_explica"))" />
+    }
+    else
+    {
+        <div class="table-wrap">
+            <table class="data">
+                <thead><tr><th>@T("locations.codigo")</th><th>@T("locations.tipo")</th><th>@T("locations.articulo_fijo")</th><th class="num">@T("locations.stock")</th><th class="actions-col"></th></tr></thead>
+                <tbody>
+                    @foreach (var l in _locations)
+                    {
+                        <tr @key="l.Id" style="cursor:pointer" @onclick="() => VerStockAsync(l)">
+                            <td>
+                                <div class="two-line">
+                                    <span class="t1">@l.Code</span>
+                                    <span class="t2">@Partes(l)</span>
+                                </div>
+                            </td>
+                            <td><span class="pill @Tono(l.Kind) plain">@Tipo(l.Kind)</span></td>
+                            <td><span class="muted">@(l.FixedItemName ?? "—")</span></td>
+                            <td class="num">
+                                @if (l.Units > 0)
+                                {
+                                    <div class="two-line" style="align-items:flex-end"><span class="t1">@Fmt.Qty(l.Units)</span><span class="t2">@T("locations.n_articulos", l.Items)</span></div>
+                                }
+                                else
+                                {
+                                    <span class="faint">@T("locations.vacia")</span>
+                                }
+                            </td>
+                            <td class="actions-col" @onclick:stopPropagation>
+                                @if (Session.Can(WmsPermissions.ManageLocations))
+                                {
+                                    <button class="btn btn-ghost icon-btn sm" title="@(T("locations.editar"))" @onclick="() => Editar(l)"><Icon Name="edit" Size="16" /></button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</div>
+
+@if (_editando is { } e)
+{
+    <Modal Title="@(_editId is null ? T("locations.nueva_ubicacion") : e.Code)" Subtitle="@(T("locations.se_comparte"))" Error="@_error" OnClose="() => _editando = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("locations.codigo")</label>
+                    <input class="control" placeholder="@(T("locations.codigo_placeholder"))" @bind="e.Code" />
+                </div>
+                <div class="field">
+                    <label>@T("locations.tipo")</label>
+                    <select class="select" @bind="e.Kind">
+                        @foreach (var k in LocationKinds.All)
+                        {
+                            <option value="@k">@Tipo(k)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="form-row three">
+                <div class="field"><label>@T("locations.zona")</label><input class="control" @bind="e.Zone" /></div>
+                <div class="field"><label>@T("locations.pasillo")</label><input class="control" @bind="e.Aisle" /></div>
+                <div class="field"><label>@T("locations.rack")</label><input class="control" @bind="e.Rack" /></div>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>@T("locations.nivel")</label><input class="control" @bind="e.Level" /></div>
+                <div class="field"><label>@T("locations.posicion")</label><input class="control" @bind="e.Position" /></div>
+            </div>
+            <div class="field">
+                <label>@T("locations.articulo_fijo_opcional")</label>
+                @if (e.FixedItemId is not null)
+                {
+                    <div class="list-row">
+                        <span class="t1" style="font-weight:600">@_fijoNombre</span>
+                        <button class="btn btn-ghost icon-btn sm end" @onclick="() => { e.FixedItemId = null; _fijoNombre = null; }"><Icon Name="x" Size="16" /></button>
+                    </div>
+                }
+                else
+                {
+                    <ItemPicker Placeholder="@(T("locations.articulo_que_siempre_va_aqui"))" OnSelected="i => { e.FixedItemId = i.Id; _fijoNombre = i.Name; }" />
+                }
+            </div>
+            @if (_editId is not null)
+            {
+                <label class="check-row"><input type="checkbox" @bind="e.IsActive" /><span>@T("locations.activa")</span></label>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _editando = null">@T("locations.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="GuardarAsync">@T("locations.guardar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_rango is { } r)
+{
+    <Modal Title="@(T("locations.crear_por_rango"))" Subtitle="@(T("locations.rango_explica"))" Size="sm" Error="@_error" OnClose="() => _rango = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field"><label>@T("locations.zona")</label><input class="control" placeholder="A" @bind="r.Zone" @bind:event="oninput" /></div>
+                <div class="field">
+                    <label>@T("locations.tipo")</label>
+                    <select class="select" @bind="r.Kind">
+                        @foreach (var k in LocationKinds.All)
+                        {
+                            <option value="@k">@Tipo(k)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>@T("locations.pasillo_desde")</label><input class="control" type="number" min="0" @bind="r.AisleFrom" @bind:event="oninput" /></div>
+                <div class="field"><label>@T("locations.pasillo_hasta")</label><input class="control" type="number" min="0" @bind="r.AisleTo" @bind:event="oninput" /></div>
+            </div>
+            <div class="form-row">
+                <div class="field"><label>@T("locations.nivel_desde")</label><input class="control" type="number" min="0" @bind="r.LevelFrom" @bind:event="oninput" /></div>
+                <div class="field"><label>@T("locations.nivel_hasta")</label><input class="control" type="number" min="0" @bind="r.LevelTo" @bind:event="oninput" /></div>
+            </div>
+            @if (r.Total > 0 && !string.IsNullOrWhiteSpace(r.Zone))
+            {
+                <div class="alert info"><Icon Name="layers" Size="18" /><span>@T("locations.se_crearan", r.Total, r.Primero, r.Ultimo)</span></div>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _rango = null">@T("locations.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="CrearRangoAsync">@T("locations.crear")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_viendo is { } v)
+{
+    <Modal Title="@v.Code" Subtitle="@($"{Tipo(v.Kind)} · {Partes(v)}")" Error="@_error" OnClose="() => _viendo = null">
+        <ChildContent>
+            @if (_stock.Count == 0)
+            {
+                <span class="muted">@T("locations.vacia_explica")</span>
+            }
+            @foreach (var s in _stock)
+            {
+                <div class="list-row" @key="s.ItemId">
+                    <div class="two-line"><span class="t1">@s.ItemName</span><span class="t2">#@s.Sku</span></div>
+                    <strong class="end">@Fmt.Qty(s.Quantity) @s.Unit</strong>
+                    @if (Session.Can(WmsPermissions.Relocate))
+                    {
+                        <button class="btn btn-sm" @onclick="() => IniciarMover(s)"><Icon Name="arrows" Size="16" />@T("locations.mover")</button>
+                    }
+                </div>
+            }
+            @if (_moviendo is { } m)
+            {
+                <div class="card" style="padding:14px;display:flex;flex-direction:column;gap:12px">
+                    <strong>@T("locations.mover_de", m.ItemName, v.Code)</strong>
+                    <div class="form-row">
+                        <div class="field"><label>@T("locations.cantidad")</label><input class="control" type="number" min="0" step="any" @bind="_cantidad" /></div>
+                        <div class="field">
+                            <label>@T("locations.a_la_ubicacion")</label>
+                            <input class="control" list="codigos-ubicacion" placeholder="@(T("locations.escanea_o_escribe"))" @bind="_destino" />
+                            <datalist id="codigos-ubicacion">
+                                @foreach (var l in _locations.Where(l => l.IsActive && l.Id != v.Id))
+                                {
+                                    <option value="@l.Code"></option>
+                                }
+                            </datalist>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:8px;justify-content:flex-end">
+                        <button class="btn btn-sm" @onclick="() => _moviendo = null">@T("locations.cancelar")</button>
+                        <button class="btn btn-dark btn-sm" disabled="@_busy" @onclick="() => MoverAsync(v)">@T("locations.mover")</button>
+                    </div>
+                </div>
+            }
+        </ChildContent>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<LocationRow> _locations = [];
+    private Guid? _site;
+    private string _search = "";
+
+    private LocationDraftModel? _editando;
+    private Guid? _editId;
+    private string? _fijoNombre;
+    private RangoModel? _rango;
+    private LocationRow? _viendo;
+    private IReadOnlyList<LocationStockRow> _stock = [];
+    private LocationStockRow? _moviendo;
+    private decimal _cantidad;
+    private string? _destino, _error;
+    private bool _busy;
+
+    private sealed class LocationDraftModel
+    {
+        public string? Code { get; set; }
+        public string Kind { get; set; } = LocationKinds.Storage;
+        public string? Zone { get; set; }
+        public string? Aisle { get; set; }
+        public string? Rack { get; set; }
+        public string? Level { get; set; }
+        public string? Position { get; set; }
+        public Guid? FixedItemId { get; set; }
+        public bool IsActive { get; set; } = true;
+    }
+
+    private sealed class RangoModel
+    {
+        public string Zone { get; set; } = "A";
+        public int AisleFrom { get; set; } = 1;
+        public int AisleTo { get; set; } = 5;
+        public int LevelFrom { get; set; } = 1;
+        public int LevelTo { get; set; } = 4;
+        public string Kind { get; set; } = LocationKinds.Storage;
+        public int Total => Math.Max(0, AisleTo - AisleFrom + 1) * Math.Max(0, LevelTo - LevelFrom + 1);
+        public string Primero => $"{Zone.Trim().ToUpperInvariant()}-{AisleFrom:00}-{LevelFrom:00}";
+        public string Ultimo => $"{Zone.Trim().ToUpperInvariant()}-{AisleTo:00}-{LevelTo:00}";
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (_sites.Count == 0)
+        {
+            _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
+            _site ??= _sites.FirstOrDefault()?.Id;
+        }
+        _locations = _site is { } site ? await Wms.Locations.GetLocationsAsync(site, includeInactive: true, _search) : [];
+    }
+
+    private static string Tipo(string kind) => T($"location.kind.{kind}");
+
+    private static string Tono(string kind) => kind switch
+    {
+        LocationKinds.Picking => "info",
+        LocationKinds.Shipping => "good",
+        LocationKinds.Receiving => "accent",
+        LocationKinds.Quarantine => "warn",
+        _ => "neutral",
+    };
+
+    private static string Partes(LocationRow l)
+    {
+        var partes = new[] { (T("locations.zona"), l.Zone), (T("locations.pasillo"), l.Aisle), (T("locations.rack"), l.Rack),
+            (T("locations.nivel"), l.Level), (T("locations.posicion"), l.Position) }.Where(p => !string.IsNullOrEmpty(p.Item2))
+            .Select(p => $"{p.Item1} {p.Item2}").ToList();
+        var texto = partes.Count == 0 ? "" : string.Join(" · ", partes);
+        return l.IsActive ? texto : $"{T("locations.inactiva")}{(texto.Length == 0 ? "" : $" · {texto}")}";
+    }
+
+    private void Nueva()
+    {
+        (_editId, _fijoNombre, _error) = (null, null, null);
+        _editando = new LocationDraftModel();
+    }
+
+    private void Editar(LocationRow l)
+    {
+        (_editId, _fijoNombre, _error) = (l.Id, l.FixedItemName, null);
+        _editando = new LocationDraftModel
+        {
+            Code = l.Code, Kind = l.Kind, Zone = l.Zone, Aisle = l.Aisle, Rack = l.Rack, Level = l.Level, Position = l.Position,
+            FixedItemId = l.FixedItemId, IsActive = l.IsActive,
+        };
+    }
+
+    private async Task GuardarAsync()
+    {
+        if (_editando is not { } e || _site is not { } site)
+            return;
+        _busy = true;
+        _error = await TryAsync(() => Wms.Locations.SaveAsync(_editId, new LocationDraft(site, e.Code, e.Kind, e.Zone, e.Aisle, e.Rack, e.Level,
+            e.Position, e.FixedItemId, e.IsActive)), T("locations.ubicacion_guardada"));
+        _busy = false;
+        if (_error is null)
+            _editando = null;
+    }
+
+    private void AbrirRango()
+    {
+        _error = null;
+        _rango = new RangoModel();
+    }
+
+    private async Task CrearRangoAsync()
+    {
+        if (_rango is not { } r || _site is not { } site)
+            return;
+        _busy = true;
+        var creadas = 0;
+        _error = await TryAsync(async () => creadas = await Wms.Locations.CreateRangeAsync(
+            new LocationRange(site, r.Zone, r.AisleFrom, r.AisleTo, r.LevelFrom, r.LevelTo, r.Kind)));
+        _busy = false;
+        if (_error is null)
+        {
+            _rango = null;
+            Toasts.Success(T("locations.creadas", creadas));
+        }
+    }
+
+    private async Task VerStockAsync(LocationRow l)
+    {
+        (_error, _moviendo) = (null, null);
+        _stock = await Wms.Locations.GetLocationStockAsync(l.Id);
+        _viendo = l;
+    }
+
+    private void IniciarMover(LocationStockRow s)
+    {
+        _moviendo = s;
+        (_cantidad, _destino) = (s.Quantity, null);
+    }
+
+    private async Task MoverAsync(LocationRow origen)
+    {
+        if (_moviendo is not { } m || _site is not { } site)
+            return;
+        _busy = true;
+        _error = await TryAsync(async () =>
+        {
+            var destino = await Wms.Locations.FindByCodeAsync(site, _destino ?? "")
+                ?? throw new WmsValidationException(T("locations.no_existe_la_ubicacion", _destino ?? ""));
+            await Wms.Locations.RelocateAsync(site, m.ItemId, origen.Id, destino.Id, _cantidad);
+        }, T("locations.stock_movido"));
+        _busy = false;
+        if (_error is null)
+        {
+            _moviendo = null;
+            _stock = await Wms.Locations.GetLocationStockAsync(origen.Id);
+        }
+    }
+}

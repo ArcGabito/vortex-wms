@@ -45,7 +45,8 @@ public sealed class WmsSyncHandlers(
         .OnEvent(SuiteEvents.OrderPickingStarted, HandleOrderPickingStartedAsync)
         .OnEvent(SuiteEvents.OrderCancelled, HandleOrderCancelledAsync)
         .OnEvent(SuiteEvents.ReceiptCancelled, HandleReceiptCancelledAsync)
-        .OnEvent(SuiteEvents.RecordUpserted, HandleRecordUpsertedAsync);
+        .OnEvent(SuiteEvents.RecordUpserted, HandleRecordUpsertedAsync)
+        .OnEvent(SuiteEvents.StockRelocated, HandleStockRelocatedAsync);
 
     /// <summary>Cuánto se recuerdan los eventos ya aplicados. El feed no vuelve a entregar eventos tan viejos.</summary>
     public static readonly TimeSpan ProcessedEventsRetention = TimeSpan.FromDays(180);
@@ -231,6 +232,14 @@ public sealed class WmsSyncHandlers(
                     return "estado de lote no válido";
                 return await LotService.ApplyStatusAsync(c, tx, lot, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
             }
+            if (r.Kind == WmsRecordKinds.Location)
+            {
+                var loc = r.Data.Deserialize<LocationData>(VortexJson.Options);
+                if (loc is null || loc.Id == Guid.Empty || loc.SiteId == Guid.Empty || string.IsNullOrWhiteSpace(loc.Code)
+                    || !Domain.LocationKinds.All.Contains(loc.Kind))
+                    return "ubicación no válida";
+                return await LocationService.ApplyLocationAsync(c, tx, loc, r.UpdatedAt) ? null : "sin cambios (ya tenía una más nueva)";
+            }
             if (r.Kind == WmsRecordKinds.ShelfLife)
             {
                 var life = r.Data.Deserialize<Domain.ItemShelfLife>(VortexJson.Options);
@@ -245,6 +254,17 @@ public sealed class WmsSyncHandlers(
                 return "sin siteId o itemId";
             await InventoryService.ApplySettingsAsync(c, tx, s, r.UpdatedAt);
             return null;
+        }, ct);
+
+    /// <summary>Traslado entre ubicaciones hecho en otro equipo del WMS (no cambia el stock de la sede).</summary>
+    public Task HandleStockRelocatedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<StockRelocated>(e, async (r, c, tx, now) =>
+        {
+            if (e.Source != ProductCode)
+                return "ignorado: solo lo publica el WMS";
+            if (r.SiteId == Guid.Empty || r.ItemId == Guid.Empty || r.Quantity <= 0)
+                return "traslado no válido";
+            return await LocationService.ApplyAsync(c, tx, e.Id, e.OccurredAt, r, null) ? null : "ya aplicado";
         }, ct);
 
     // ---------- Internos ----------

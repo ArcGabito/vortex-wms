@@ -51,6 +51,11 @@ cambio más reciente). Desde la fase 3 también el saldo por lote (`stock_lots`,
 (`serials`) y qué lotes y series movió cada movimiento; el estado de un lote (`lot_status`) y la vida útil de un
 artículo (`shelf_life`) se comparten igual por `wms.record.upserted`.
 
+Ubicaciones (fase 4a): el mapa de cada sede viaja como `wms.record.upserted` (`location`, gana el más nuevo; si dos equipos
+crearon el mismo código, el más viejo queda inactivo con el código marcado). Cada traslado entre ubicaciones es un
+`stock.relocated` (`siteId`, `itemId`, `fromLocationId`, `toLocationId`, `quantity`, `reference`); sin `fromLocationId`
+sale de lo que no tiene ubicación. Se aplica una vez por Id y nunca mueve más de lo que hay en el origen.
+
 ## Eventos (versión 1)
 
 ### Qué publica el WMS
@@ -65,7 +70,8 @@ artículo (`shelf_life`) se comparten igual por `wms.record.upserted`.
 | `order.picking_started` | Al empezar a preparar un pedido | Determinista por pedido |
 | `order.cancelled` | Al cancelar un pedido (libera la reserva) | Determinista por pedido |
 | `receipt.cancelled` | Al anular una recepción esperada | Determinista por recepción |
-| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede, el estado de un lote o la vida útil de un artículo | Id nuevo; `updatedAt` en los datos |
+| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede, el estado de un lote, la vida útil de un artículo o una ubicación del mapa (`location`) | Id nuevo; `updatedAt` en los datos |
+| `stock.relocated` | Al guardar lo recibido o mover stock entre ubicaciones de una sede (no cambia el stock de la sede; solo lo consumen los demás equipos del WMS) | Id nuevo por traslado |
 
 `stock.adjusted` lleva el delta y la existencia resultante (`quantityDelta`, `quantityOnHand`), el motivo y la
 referencia del documento. Desde la fase 1 también el costo con que se valorizó el movimiento (`unitCost`, `totalCost`,
