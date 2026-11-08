@@ -233,18 +233,51 @@ public static class OrderStatuses
 {
     public const string Pending = "pending";
     public const string Picking = "picking";
+
+    /// <summary>Salió una parte; el resto queda pendiente (faltante) y sigue reservado.</summary>
+    public const string Partial = "partial";
     public const string Dispatched = "dispatched";
     public const string Cancelled = "cancelled";
 
-    public static readonly string[] All = [Pending, Picking, Dispatched, Cancelled];
+    public static readonly string[] All = [Pending, Picking, Partial, Dispatched, Cancelled];
+
+    /// <summary>Se puede preparar, despachar o cancelar.</summary>
+    public static bool IsOpen(string status) => status is Pending or Picking or Partial;
+}
+
+public static class OrderApprovals
+{
+    /// <summary>Supera el crédito del cliente en el ERP: no reserva ni se prepara hasta <c>order.approved</c>.</summary>
+    public const string Pending = "pending";
+    public const string Approved = "approved";
+}
+
+/// <summary>Una parada del recorrido de picking: de qué ubicación tomar cuánto de un artículo (sin ubicación, al final).</summary>
+public sealed record PickStop(Guid ItemId, string Sku, string ItemName, string Unit, string? Barcode, Guid? LocationId, string? LocationCode,
+    decimal ToPick);
+
+/// <summary>Lo ya tomado (aún sin despachar).</summary>
+public sealed record PickRow(Guid Id, Guid ItemId, string ItemName, Guid? LocationId, string? LocationCode, decimal Quantity,
+    DateTimeOffset PickedAt, string? UserName);
+
+/// <summary>Cuánto falta preparar de cada artículo y cuánto no hay en la sede.</summary>
+public sealed record PickNeed(Guid ItemId, string Sku, string ItemName, decimal Remaining, decimal Picked, decimal Missing);
+
+public sealed record PickPlan(OrderRow Order, IReadOnlyList<PickStop> Stops, IReadOnlyList<PickRow> Picked, IReadOnlyList<PickNeed> Needs)
+{
+    public bool Complete => Needs.All(n => n.Picked >= n.Remaining);
 }
 
 public sealed record OrderRow(
     Guid Id, string Number, string Source, Guid? CustomerId, string? CustomerName, Guid SiteId, string? SiteName,
     string Status, decimal Total, string CurrencyCode, DateTimeOffset CreatedAt, DateTimeOffset? DispatchedAt, string? Carrier,
-    string? TrackingNumber, int LineCount, decimal Units);
+    string? TrackingNumber, int LineCount, decimal Units, string? Approval = null, decimal Shipped = 0)
+{
+    public bool PendingApproval => Approval == OrderApprovals.Pending;
+}
 
-public sealed record OrderLineRow(int LineNo, Guid ItemId, string Sku, string ItemName, decimal Quantity, decimal UnitPrice, decimal OnHand);
+public sealed record OrderLineRow(int LineNo, Guid ItemId, string Sku, string ItemName, decimal Quantity, decimal UnitPrice, decimal OnHand,
+    decimal Shipped = 0);
 
 // ---------- Recepciones ----------
 

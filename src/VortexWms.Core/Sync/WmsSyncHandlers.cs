@@ -38,6 +38,7 @@ public sealed class WmsSyncHandlers(
         .OnEvent(SuiteEvents.SaleVoided, HandleSaleVoidedAsync)
         .OnEvent(SuiteEvents.SaleReturned, HandleSaleReturnedAsync)
         .OnEvent(SuiteEvents.OrderCreated, HandleOrderCreatedAsync)
+        .OnEvent(SuiteEvents.OrderApproved, HandleOrderApprovedAsync)
         .OnEvent(SuiteEvents.PurchaseOrderCreated, HandlePurchaseOrderCreatedAsync)
         .OnEvent(SuiteEvents.StockAdjusted, HandleStockAdjustedAsync)
         .OnEvent(SuiteEvents.GoodsReceived, HandleGoodsReceivedAsync)
@@ -143,6 +144,14 @@ public sealed class WmsSyncHandlers(
         ApplyOnceAsync<OrderCreated>(e, async (order, c, tx, now) =>
         {
             await orders.ApplyOrderCreatedAsync(c, tx, now, e.Source, order);
+            return null;
+        }, ct);
+
+    /// <summary>El ERP aprobó un pedido que superaba el crédito: reserva su stock y se puede preparar.</summary>
+    public Task HandleOrderApprovedAsync(VortexEvent e, CancellationToken ct = default) =>
+        ApplyOnceAsync<OrderApproved>(e, async (approved, c, tx, now) =>
+        {
+            await OrderService.ApplyApprovedAsync(c, tx, now, approved);
             return null;
         }, ct);
 

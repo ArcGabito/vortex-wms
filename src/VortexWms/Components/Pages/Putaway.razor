@@ -1,5 +1,6 @@
 @page "/guardado"
 @inherits WmsPage
+@inject IJSRuntime JS
 
 <SectionContent SectionName="page-title">@T("putaway.guardar")</SectionContent>
 
@@ -72,7 +73,7 @@
                 <label>@T("putaway.ubicacion")</label>
                 <div class="input-icon">
                     <Icon Name="barcode" Size="16" />
-                    <input class="control" placeholder="@(T("putaway.escanea_la_etiqueta"))" @bind="_codigo" @bind:event="oninput" @onkeydown="EnterAsync" />
+                    <input @ref="_codigoInput" class="control" placeholder="@(T("putaway.escanea_la_etiqueta"))" @bind="_codigo" @bind:event="onchange" @onkeydown="EnterAsync" />
                 </div>
                 @if (g.SuggestedCode is { } sugerida && !string.Equals(_codigo?.Trim(), sugerida, StringComparison.OrdinalIgnoreCase))
                 {
@@ -82,7 +83,7 @@
         </ChildContent>
         <Footer>
             <button class="btn" @onclick="() => _guardando = null">@T("putaway.cancelar")</button>
-            <button class="btn btn-dark" disabled="@(_busy || string.IsNullOrWhiteSpace(_codigo))" @onclick="ConfirmarAsync"><Icon Name="check" Size="16" />@T("putaway.confirmar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="ConfirmarAsync"><Icon Name="check" Size="16" />@T("putaway.confirmar")</button>
         </Footer>
     </Modal>
 }
@@ -113,14 +114,21 @@
         _guardando = p;
     }
 
+    private ElementReference _codigoInput;
+
+    /// <summary>Enter del lector: el valor se lee del campo (la tecla llega antes que el cambio y con un lector rápido
+    /// enlazar en cada tecla perdía dígitos).</summary>
     private async Task EnterAsync(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter")
-            await ConfirmarAsync();
+        if (e.Key != "Enter")
+            return;
+        _codigo = await JS.InvokeAsync<string?>("vortex.getValue", _codigoInput);
+        await ConfirmarAsync();
     }
 
     private async Task ConfirmarAsync()
     {
+        _codigo = await JS.InvokeAsync<string?>("vortex.getValue", _codigoInput) ?? _codigo;
         if (_guardando is not { } p || string.IsNullOrWhiteSpace(_codigo))
             return;
         _busy = true;

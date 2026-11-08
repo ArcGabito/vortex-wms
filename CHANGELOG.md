@@ -8,6 +8,10 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Picking guiado y despacho parcial (fase 4b1):** recorrido por ubicación para preparar cada pedido, confirmando con
+  el escaneo de la ubicación y del artículo; si falta stock se despacha lo preparado y el resto queda pendiente y
+  reservado (`shipment.dispatched` con `partial`). Los pedidos por aprobar del ERP no reservan ni se preparan hasta
+  `order.approved`.
 - **Ubicaciones y guardado guiado (fase 4a):** mapa por sede (tipo, zona, pasillo, rack, nivel, posición y artículo
   fijo) con alta por rango; stock por ubicación y traslados internos (`stock.relocated`); pantalla Guardar con la
   ubicación sugerida (la fija, la que ya tiene el artículo o una libre) que se confirma escaneando la etiqueta.
@@ -42,6 +46,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
   `totalCost` (aditivos).
 
 ### Fixed
+- El buscador de artículos y los campos de escaneo (Guardar, Preparar) perdían dígitos o tomaban el código anterior con
+  lectores rápidos.
 - La caja ilustrada del menú seguía en naranja: pasa a los morados de la marca. En el celular el título de la barra
   superior ya no se corta.
 - Celular: los diálogos, el editor de líneas y los indicadores ya no se salen de la pantalla.

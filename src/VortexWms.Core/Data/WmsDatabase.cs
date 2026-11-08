@@ -228,5 +228,19 @@ internal static class Schema
             to_location_id TEXT, quantity REAL NOT NULL, user_name TEXT, reference TEXT);
         CREATE INDEX ix_relocations_item ON relocations (item_id, site_id, occurred_at);
         """,
+        // 8: fase 4b1, picking y despachos parciales. Lo tomado de cada ubicación por pedido (de este equipo, hasta despachar),
+        // lo ya despachado por línea y los despachos de cada pedido (un pedido puede salir en partes). Un pedido que llega
+        // por aprobar (supera el crédito del cliente en el ERP) no reserva ni se prepara hasta order.approved.
+        """
+        ALTER TABLE orders ADD COLUMN approval TEXT;
+        ALTER TABLE order_lines ADD COLUMN shipped REAL NOT NULL DEFAULT 0;
+        CREATE TABLE order_picks (
+            id TEXT PRIMARY KEY, order_id TEXT NOT NULL, item_id TEXT NOT NULL, location_id TEXT, quantity REAL NOT NULL,
+            picked_at TEXT NOT NULL, user_name TEXT, shipment_id TEXT);
+        CREATE INDEX ix_order_picks_order ON order_picks (order_id);
+        CREATE TABLE order_shipments (
+            id TEXT PRIMARY KEY, order_id TEXT NOT NULL, number TEXT NOT NULL, dispatched_at TEXT NOT NULL, partial INTEGER NOT NULL);
+        CREATE INDEX ix_order_shipments_order ON order_shipments (order_id);
+        """,
     ];
 }

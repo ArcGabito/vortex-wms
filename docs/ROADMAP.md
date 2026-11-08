@@ -83,9 +83,9 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
 | WMS-50 | Pedidos del ERP, CRM y WMS; preparación y despacho; ventas del POS | Hecho | — |
-| WMS-51 | Picking guiado por pedido y por grupo, con recorrido ordenado | Pendiente | 4b |
+| WMS-51 | Picking guiado por pedido y por grupo, con recorrido ordenado | Parcial: por pedido; falta por grupo | 4b1 |
 | WMS-52 | Olas de picking planificadas por transportista u hora de corte | Pendiente | 9 |
-| WMS-53 | Despacho parcial con saldo pendiente | Pendiente | 4b |
+| WMS-53 | Despacho parcial con saldo pendiente | Hecho | 4b1 |
 | WMS-54 | Empaque en bultos con peso y contenido | Pendiente | 4b |
 | WMS-55 | Integración con transportistas (tarifa, etiqueta y seguimiento) | Pendiente | 9 |
 
@@ -290,6 +290,18 @@ dos equipos no preparan lo mismo.
 
 **Terminado cuando:** una prueba de punta a punta (recibir › guardar › pedido › picking guiado › empaque › despacho
 parcial) pasa con dos equipos.
+
+**Partes:** 4b1, picking guiado por pedido, despacho parcial y pedidos por aprobar; 4b2, empaque, reabastecimiento,
+cola de tareas por operario y picking por grupo de pedidos.
+
+**Estado 4b1 (2026-11):** hecha. Recorrido de picking por pedido: de qué ubicación tomar cuánto, en orden de código
+(picking, almacenamiento, despacho, recepción; nunca cuarentena) y lo que no tiene ubicación al final; se confirma
+escaneando la ubicación y el artículo (o su caja), y el lector pasa solo de un campo al otro. Lo tomado es de este
+equipo hasta despacharse y sale exactamente de esas ubicaciones. Si falta stock se despacha lo preparado: el pedido
+queda **parcial**, el resto sigue reservado y `shipment.dispatched` lleva `partial: true` y las líneas despachadas (cada
+parte con su Id). Un pedido que llega por aprobar (`approvalStatus: "pending"`, crédito del ERP) no reserva ni se
+prepara hasta `order.approved`. Pruebas en `PickingTests`. Además, el buscador y los campos de escaneo ya no pierden
+dígitos con lectores rápidos.
 
 ## Fase 5: conteos, devoluciones y mermas · M
 

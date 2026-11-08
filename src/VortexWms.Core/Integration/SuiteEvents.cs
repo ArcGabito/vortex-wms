@@ -26,6 +26,9 @@ public static class SuiteEvents
     public const string SaleVoided = "sale.voided";
     public const string SaleReturned = "sale.returned";
     public const string OrderCreated = "order.created";
+
+    /// <summary>El ERP aprobó un pedido que superaba el crédito del cliente: ya se reserva y se prepara.</summary>
+    public const string OrderApproved = "order.approved";
     public const string PurchaseOrderCreated = "purchase_order.created";
 }
 
@@ -59,7 +62,7 @@ public sealed record StockTransferred(Guid TransferId, string Number, Guid FromS
 /// <summary><c>shipment.dispatched</c>. Extiende v1 con <c>number</c>, <c>siteId</c> y <c>lines</c>.</summary>
 public sealed record ShipmentDispatched(
     Guid ShipmentId, Guid OrderId, Guid CustomerId, string? Carrier, string? TrackingNumber, string Number, Guid SiteId,
-    IReadOnlyList<QuantityLine> Lines);
+    IReadOnlyList<QuantityLine> Lines, bool? Partial = null);
 
 // ---------- Consumidos por el WMS ----------
 
@@ -79,7 +82,11 @@ public sealed record SaleReturned(Guid SaleId, Guid ReturnId, Guid SiteId, IRead
 public sealed record OrderLine(Guid ItemId, decimal Quantity, decimal UnitPrice);
 
 public sealed record OrderCreated(
-    Guid OrderId, string? Number, Guid CustomerId, Guid? SiteId, IReadOnlyList<OrderLine>? Lines, decimal Total, string? CurrencyCode);
+    Guid OrderId, string? Number, Guid CustomerId, Guid? SiteId, IReadOnlyList<OrderLine>? Lines, decimal Total, string? CurrencyCode,
+    string? ApprovalStatus = null);
+
+/// <summary><c>order.approved</c> del ERP.</summary>
+public sealed record OrderApproved(Guid OrderId, string? Number, string? ApprovedBy);
 
 public sealed record PurchaseOrderLine(Guid ItemId, decimal Quantity, decimal UnitCost);
 
