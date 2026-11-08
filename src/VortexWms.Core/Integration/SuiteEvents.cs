@@ -16,6 +16,7 @@ public static class SuiteEvents
 
     /// <summary>Replicación interna: datos propios del WMS (ubicación y mínimo por artículo y sede) entre sus equipos.</summary>
     public const string RecordUpserted = "wms.record.upserted";
+    public const string StockRelocated = "stock.relocated";
 
     // Publican el WMS, el ERP y el CRM
     public const string OrderCancelled = "order.cancelled";
@@ -109,6 +110,9 @@ public static class WmsRecordKinds
 
     /// <summary>Vida útil y días mínimos al recibir de un artículo. Id: <c>{itemId}</c>.</summary>
     public const string ShelfLife = "shelf_life";
+
+    /// <summary>Ubicación del mapa de una sede. Id: el de la ubicación.</summary>
+    public const string Location = "location";
 }
 
 /// <summary>
@@ -120,3 +124,16 @@ public sealed record WmsRecord(string Kind, string Id, DateTimeOffset UpdatedAt,
 public sealed record StockSettingsData(Guid SiteId, Guid ItemId, string? Bin, decimal? ReorderPoint);
 
 public sealed record LotStatusData(Guid SiteId, Guid ItemId, string LotCode, string Status, string? Note = null);
+
+/// <summary>Ubicación del mapa de una sede (registro propio del WMS; gana el cambio más reciente).</summary>
+public sealed record LocationData(
+    Guid Id, Guid SiteId, string Code, string Kind, string? Zone, string? Aisle, string? Rack, string? Level, string? Position,
+    Guid? FixedItemId, bool IsActive);
+
+/// <summary>
+/// <c>stock.relocated</c>: traslado interno de stock entre ubicaciones de una sede (no cambia el stock de la sede). Sin
+/// <c>fromLocationId</c> sale de lo que no tiene ubicación (guardar lo recibido); sin <c>toLocationId</c>, vuelve a quedar
+/// sin ubicación. Solo lo consumen los demás equipos del WMS.
+/// </summary>
+public sealed record StockRelocated(Guid SiteId, Guid ItemId, Guid? FromLocationId, Guid? ToLocationId, decimal Quantity,
+    string? Reference = null);

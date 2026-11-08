@@ -63,7 +63,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 |---|---|---|---|
 | WMS-30 | Recepciones de OC del ERP y directas, con diferencias | Hecho | — |
 | WMS-31 | Recepción en cualquier presentación | Hecho | 2 |
-| WMS-32 | Guardado guiado con ubicación sugerida | Pendiente | 4a |
+| WMS-32 | Guardado guiado con ubicación sugerida | Hecho | 4a |
 | WMS-33 | Aviso anticipado de envío (ASN) del proveedor | Pendiente | 9 |
 | WMS-34 | Citas de muelle para recepción y despacho | Pendiente | 9 |
 | WMS-35 | Cross-docking (de la recepción al despacho sin almacenar) | Pendiente | 9 |
@@ -73,8 +73,8 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
 | WMS-40 | Ubicación por artículo en texto libre | Hecho | — |
-| WMS-41 | Mapa de ubicaciones (zona, pasillo, rack, nivel, posición) con código escaneable | Pendiente | 4a |
-| WMS-42 | Stock por ubicación y traslados internos | Pendiente | 4a |
+| WMS-41 | Mapa de ubicaciones (zona, pasillo, rack, nivel, posición) con código escaneable | Hecho | 4a |
+| WMS-42 | Stock por ubicación y traslados internos | Hecho | 4a |
 | WMS-43 | Reabastecimiento de ubicaciones de picking | Pendiente | 4b |
 | WMS-44 | Ubicación óptima según rotación (slotting) | Pendiente | 9 |
 
@@ -263,6 +263,14 @@ sigue pendiente: los lotes están disponibles para todos. Pruebas en `LotsTests`
   la zona) y se confirma escaneándola.
 
 **Hub:** evento `stock.relocated` para los traslados internos; solo lo consumen otros equipos del WMS.
+
+**Estado (2026-11):** hecha. Mapa de ubicaciones por sede (tipo, zona, pasillo, rack, nivel, posición, artículo fijo) con
+alta por rango y código único por sede, replicado como `wms.record.upserted` (`location`). Stock por ubicación: lo que no
+está en ninguna queda "por guardar"; los traslados internos viajan como `stock.relocated` y no cambian el stock de la
+sede; cuando el stock baja sin decir de dónde (despacho, venta, ajuste) se descuenta primero lo que no tiene ubicación y
+después las ubicaciones en un orden fijo (despacho, picking, almacenamiento, recepción, cuarentena). Guardado guiado: se
+sugiere la ubicación fija, la que ya tiene el artículo o la primera libre, y se confirma escaneando la etiqueta. Pruebas
+en `LocationsTests`. Queda para 4b: el saldo por lote dentro de cada ubicación y el texto libre `bin` (sigue como nota).
 
 ## Fase 4b: picking, empaque y tareas · XL
 

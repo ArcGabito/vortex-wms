@@ -1161,3 +1161,15 @@ table.data .strong { font-weight: 700; color: var(--ink); }
     .stat-value { flex-wrap: wrap; height: auto; }
     .stat-hint { white-space: normal; }
 }
+
+/* ---------- Guardado guiado (fase 4a): una tarjeta por artículo, pensada para el celular con lector ---------- */
+.putaway-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.putaway-card { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px 12px; align-items: center; padding: 16px; }
+.putaway-card .putaway-qty { text-align: right; white-space: nowrap; font-size: 18px; }
+.putaway-card .putaway-suggest { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: 13px; }
+.putaway-card .btn { justify-self: end; }
+.check-row { display: flex; align-items: center; gap: 10px; font-weight: 600; font-size: 13.5px; cursor: pointer; }
+
+@media (max-width: 640px) {
+    .topbar .spacer { display: none; }
+}

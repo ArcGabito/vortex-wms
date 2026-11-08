@@ -49,6 +49,8 @@ internal static class StockLedger
             ON CONFLICT (site_id, item_id) DO UPDATE SET on_hand = on_hand + $qty, updated_at = $now
             """, tx, ("$site", e.SiteId), ("$item", e.ItemId), ("$qty", e.Quantity), ("$now", now));
         var onHand = await OnHandAsync(c, tx, e.SiteId, e.ItemId);
+        if (e.Quantity < 0)
+            await LocationService.TrimAsync(c, tx, e.SiteId, e.ItemId);
 
         var movementId = e.MovementId ?? Guid.NewGuid();
         await c.ExecAsync("""
@@ -119,6 +121,8 @@ internal static class StockLedger
             if (local.Site != s.SiteId || local.Item != s.ItemId)
                 await Valuation.RevalueAsync(c, tx, s.SiteId, s.ItemId, occurredAt, Guid.Empty);
             await LotLedger.ReplicateAsync(c, tx, now, movementId, s.SiteId, s.ItemId, s.QuantityDelta, s.Lots, s.Serials, local.Site, local.Qty);
+            await LocationService.TrimAsync(c, tx, local.Site, local.Item);
+            await LocationService.TrimAsync(c, tx, s.SiteId, s.ItemId);
             await SyncConflicts.RecordAsync(c, tx, now, SyncConflictKinds.Movement, movementId, local.Ref ?? s.Reference,
                 $"{local.Qty:0.##}→{s.QuantityDelta:0.##}");
             return;
@@ -137,6 +141,8 @@ internal static class StockLedger
             ("$reason", s.Reason), ("$ref", s.Reference), ("$input", Valuation.Store(ReplicatedInputCost(s))),
             ("$sale", Valuation.Store(s.SaleAmount)), ("$op", Valuation.OperationType(KindFor(s.Reason, s.QuantityDelta), s.Reason)));
         await LotLedger.ReplicateAsync(c, tx, now, movementId, s.SiteId, s.ItemId, s.QuantityDelta, s.Lots, s.Serials, null, null);
+        if (s.QuantityDelta < 0)
+            await LocationService.TrimAsync(c, tx, s.SiteId, s.ItemId);
         // Si llegó atrasado (un equipo que estuvo sin conexión), se recalcula desde su fecha.
         await Valuation.RevalueAsync(c, tx, s.SiteId, s.ItemId, occurredAt, movementId);
     }

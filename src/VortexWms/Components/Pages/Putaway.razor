@@ -1,0 +1,137 @@
+@page "/guardado"
+@inherits WmsPage
+
+<SectionContent SectionName="page-title">@T("putaway.guardar")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("putaway.guardar_lo_recibido")</h2>
+            <p>@T("putaway.explica")</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field">
+            <label>@T("putaway.sede")</label>
+            <select class="select" value="@_site" @onchange="async e => { _site = Guid.TryParse(e.Value?.ToString(), out var g) ? g : null; await ReloadAsync(); }">
+                <option value="">@T("putaway.todas")</option>
+                @foreach (var s in _sites)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+    </div>
+
+    @if (_pending.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="package-check" Title="@(T("putaway.todo_guardado"))" Text="@(T("putaway.todo_guardado_explica"))" />
+    }
+    else
+    {
+        <div class="putaway-list">
+            @foreach (var p in _pending)
+            {
+                <div class="card putaway-card" @key="(p.SiteId, p.ItemId)">
+                    <div class="two-line">
+                        <span class="t1">@p.ItemName</span>
+                        <span class="t2">#@p.Sku · @p.SiteName</span>
+                    </div>
+                    <div class="putaway-qty"><strong>@Fmt.Qty(p.Pending)</strong> <span class="muted">@p.Unit</span></div>
+                    <div class="putaway-suggest">
+                        @if (p.SuggestedCode is { } sugerencia)
+                        {
+                            <Icon Name="pin" Size="16" />
+                            <span><strong>@sugerencia</strong> <span class="muted">· @Razon(p.SuggestionReason)</span></span>
+                        }
+                        else
+                        {
+                            <span class="warn-text">@T("putaway.sin_sugerencia")</span>
+                        }
+                    </div>
+                    @if (Session.Can(WmsPermissions.Relocate))
+                    {
+                        <button class="btn btn-dark btn-sm" @onclick="() => Iniciar(p)"><Icon Name="inbox" Size="16" />@T("putaway.guardar")</button>
+                    }
+                </div>
+            }
+        </div>
+    }
+</div>
+
+@if (_guardando is { } g)
+{
+    <Modal Title="@(T("putaway.guardar_articulo", g.ItemName))" Subtitle="@(T("putaway.pendiente", Fmt.Qty(g.Pending), g.Unit))" Size="sm" Error="@_error" OnClose="() => _guardando = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("putaway.cantidad")</label>
+                <input class="control" type="number" inputmode="decimal" min="0" step="any" @bind="_cantidad" />
+            </div>
+            <div class="field">
+                <label>@T("putaway.ubicacion")</label>
+                <div class="input-icon">
+                    <Icon Name="barcode" Size="16" />
+                    <input class="control" placeholder="@(T("putaway.escanea_la_etiqueta"))" @bind="_codigo" @bind:event="oninput" @onkeydown="EnterAsync" />
+                </div>
+                @if (g.SuggestedCode is { } sugerida && !string.Equals(_codigo?.Trim(), sugerida, StringComparison.OrdinalIgnoreCase))
+                {
+                    <button class="link-btn" style="align-self:flex-start" @onclick="() => _codigo = sugerida">@T("putaway.usar_sugerida", sugerida)</button>
+                }
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _guardando = null">@T("putaway.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || string.IsNullOrWhiteSpace(_codigo))" @onclick="ConfirmarAsync"><Icon Name="check" Size="16" />@T("putaway.confirmar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<PutawayRow> _pending = [];
+    private Guid? _site;
+    private PutawayRow? _guardando;
+    private decimal _cantidad;
+    private string? _codigo, _error;
+    private bool _busy;
+
+    protected override async Task LoadAsync()
+    {
+        if (_sites.Count == 0)
+            _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
+        _pending = await Wms.Locations.GetPendingPutawayAsync(_site);
+    }
+
+    private static string Razon(string? reason) => reason is null ? "" : T($"putaway.razon.{reason}");
+
+    private void Iniciar(PutawayRow p)
+    {
+        _error = null;
+        // Se confirma escaneando la etiqueta: el campo arranca vacío y la sugerida queda a un toque.
+        (_cantidad, _codigo) = (p.Pending, null);
+        _guardando = p;
+    }
+
+    private async Task EnterAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+            await ConfirmarAsync();
+    }
+
+    private async Task ConfirmarAsync()
+    {
+        if (_guardando is not { } p || string.IsNullOrWhiteSpace(_codigo))
+            return;
+        _busy = true;
+        _error = await TryAsync(async () =>
+        {
+            var destino = await Wms.Locations.FindByCodeAsync(p.SiteId, _codigo)
+                ?? throw new WmsValidationException(T("putaway.no_existe_la_ubicacion", _codigo.Trim().ToUpperInvariant()));
+            await Wms.Locations.RelocateAsync(p.SiteId, p.ItemId, null, destino.Id, _cantidad);
+        }, T("putaway.guardado_en", _codigo.Trim().ToUpperInvariant()));
+        _busy = false;
+        if (_error is null)
+            _guardando = null;
+    }
+}
