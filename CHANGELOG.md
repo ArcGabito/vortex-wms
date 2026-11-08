@@ -39,6 +39,7 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
   `totalCost` (aditivos).
 
 ### Fixed
+- Celular: los diálogos, el editor de líneas y los indicadores ya no se salen de la pantalla.
 - Una orden de compra o un pedido con el mismo artículo en dos líneas movía el stock de una sola línea (los
   movimientos ahora se agrupan por artículo).
 - **Sedes por usuario:** si el administrador asigna sedes al usuario en el hub, el WMS solo le muestra y le deja operar
