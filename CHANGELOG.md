@@ -8,6 +8,11 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Celular (Android):** la app respeta las barras del sistema (estado y gestos) con íconos oscuros; el botón Atrás
+  cierra el diálogo o el menú abiertos y vuelve a la página anterior en vez de cerrar la app; las tablas se ven como
+  tarjetas y las pestañas que no caben se deslizan; en pantallas táctiles no se abre el teclado solo. El negro de la
+  pantalla de inicio, el ícono, la barra de título y el logo deja el café `#1C120D` que se veía amarillento; los montos
+  menores a 10 mil del panel se muestran con decimales. La paleta cálida (grises con tinte café) pasa a grises neutros.
 - **Fase 3: lotes, vencimientos y series.** Saldo por lote con vencimiento; recepción con lote obligatoria para los
   artículos que controlan lote (con vida útil y días mínimos de vida al recibir). Despachos, transferencias y ventas de
   caja salen por FEFO (lo que vence antes), sin lotes vencidos, en cuarentena ni bloqueados; elegir otro lote requiere

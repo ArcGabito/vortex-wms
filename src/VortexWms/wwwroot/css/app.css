@@ -1,5 +1,5 @@
 /* Vortex WMS — sistema visual.
-   Fondo gris cálido, tarjeta blanca de esquinas amplias, tinta casi negra para lo principal y morado .NET (#512bd4) como acento.
+   Fondo gris neutro, tarjeta blanca de esquinas amplias, tinta casi negra para lo principal y morado .NET (#512bd4) como acento.
    Los colores de estado (bien/aviso/error/info) se reservan para estados y siempre van con texto. */
 
 @font-face {
@@ -12,16 +12,16 @@
 
 :root {
     --surface: #ffffff;
-    --surface-2: #f6f4f2;
-    --surface-3: #efece9;
-    --border: #ece8e4;
-    --border-strong: #ddd7d2;
+    --surface-2: #f5f5f6;
+    --surface-3: #ebebee;
+    --border: #e6e6ea;
+    --border-strong: #d4d4da;
 
-    --ink: #1c120d;
-    --ink-2: #33261f;
-    --text: #1c120d;
-    --text-2: #6b605a;
-    --text-3: #9a908a;
+    --ink: #16151d;
+    --ink-2: #2b2a34;
+    --text: #16151d;
+    --text-2: #66656f;
+    --text-3: #9c9ba5;
 
     --accent: #512bd4;
     --accent-2: #6d4ae0;
@@ -40,7 +40,7 @@
     --bad: #b91c1c;
     --bad-dot: #ef4444;
     --bad-soft: #fdecec;
-    --neutral-soft: #f1efed;
+    --neutral-soft: #f0f0f2;
 
     --trend-up: #16a34a;
     --trend-down: #dc2626;
@@ -50,7 +50,7 @@
     --radius-sm: 10px;
     --control-h: 44px;
 
-    --shadow-pop: 0 4px 12px rgba(28, 18, 13, .08), 0 24px 48px rgba(28, 18, 13, .16);
+    --shadow-pop: 0 4px 12px rgba(22, 21, 29, .08), 0 24px 48px rgba(22, 21, 29, .16);
 
     --sidebar-w: 240px;
 }
@@ -168,7 +168,7 @@ input, select, textarea { font: inherit; color: inherit; }
     margin-top: auto;
     padding: 18px 16px 18px;
     border-radius: var(--radius-lg);
-    background: linear-gradient(180deg, #f6f3f0 0%, #fbfaf9 100%);
+    background: linear-gradient(180deg, #f5f5f6 0%, #fafafb 100%);
     text-align: center;
 }
 
@@ -231,7 +231,7 @@ input, select, textarea { font: inherit; color: inherit; }
     overflow-y: auto;
     overflow-x: hidden;
     scrollbar-width: thin;
-    scrollbar-color: #d9d3ce transparent;
+    scrollbar-color: #d4d4da transparent;
 }
 
 .page { padding: 26px 28px 28px; display: flex; flex-direction: column; gap: 22px; }
@@ -463,7 +463,7 @@ textarea.control { height: auto; min-height: 80px; padding: 12px 14px; resize: v
     appearance: none;
     -webkit-appearance: none;
     padding-right: 38px;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%231c120d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2316151d' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
     background-repeat: no-repeat;
     background-position: right 14px center;
     cursor: pointer;
@@ -524,7 +524,7 @@ input[type="checkbox"]:checked::after { opacity: 1; }
     white-space: nowrap;
 }
 
-.segmented button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(28, 18, 13, .1); }
+.segmented button.on { background: var(--surface); color: var(--ink); box-shadow: 0 1px 3px rgba(22, 21, 29, .1); }
 
 /* ---------- Tablas ---------- */
 
@@ -555,7 +555,7 @@ table.data td {
     font-size: 13px;
 }
 
-table.data tr:hover td { background: #fcfbfa; }
+table.data tr:hover td { background: #fafafb; }
 table.data th.check-col, table.data td.check-col { width: 44px; padding-left: 2px; }
 table.data .num { text-align: right; white-space: nowrap; }
 table.data th.num { text-align: right; }
@@ -632,7 +632,7 @@ table.data .strong { font-weight: 700; color: var(--ink); }
     border-radius: 50%;
     border: 0;
     background: var(--surface);
-    box-shadow: 0 2px 8px rgba(28, 18, 13, .10);
+    box-shadow: 0 2px 8px rgba(22, 21, 29, .10);
     font-weight: 600;
     font-size: 13px;
     cursor: pointer;
@@ -728,7 +728,7 @@ table.data .strong { font-weight: 700; color: var(--ink); }
     position: fixed;
     inset: 0;
     z-index: 60;
-    background: rgba(28, 18, 13, .38);
+    background: rgba(22, 21, 29, .38);
     display: grid;
     place-items: center;
     padding: 20px;
@@ -927,7 +927,7 @@ table.data .strong { font-weight: 700; color: var(--ink); }
 .login-cover {
     position: relative;
     overflow: hidden;
-    background: #0b0807;
+    background: #0d0c12;
 }
 
 .login-cover img {
@@ -1053,11 +1053,10 @@ table.data .strong { font-weight: 700; color: var(--ink); }
         background: var(--surface);
         transform: translateX(-100%);
         transition: transform .2s ease-out;
-        box-shadow: var(--shadow-pop);
     }
 
-    .sidebar.open { transform: none; }
-    .sidebar-backdrop.open { display: block; position: fixed; inset: 0; z-index: 49; background: rgba(28, 18, 13, .3); }
+    .sidebar.open { transform: none; box-shadow: var(--shadow-pop); }
+    .sidebar-backdrop.open { display: block; position: fixed; inset: 0; z-index: 49; background: rgba(22, 21, 29, .3); }
 
     .topbar { padding: 14px 16px; gap: 10px; min-height: 64px; }
     .topbar .menu-btn { display: inline-flex; }
@@ -1086,4 +1085,45 @@ table.data .strong { font-weight: 700; color: var(--ink); }
 @media (max-width: 960px) {
     .tracking-row { grid-template-columns: minmax(0, 1fr) 80px 34px; }
     .tracking-row input[type="date"] { grid-column: 1 / -1; }
+}
+
+/* ---------- Celular: tablas como tarjetas y barra superior compacta ---------- */
+
+@media (max-width: 640px) {
+    /* Cada fila es una tarjeta: la primera celda arriba a todo el ancho, los montos a la derecha, el menú arriba. */
+    table.data { min-width: 0 !important; }
+    table.data thead { display: none; }
+    table.data, table.data tbody { display: block; }
+    table.data tr {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 6px 14px;
+        position: relative;
+        padding: 14px 0;
+        border-bottom: 1px solid var(--border);
+    }
+    table.data tr:has(> td.actions-col) { padding-right: 44px; }
+    table.data td { display: block; padding: 0; border: 0; min-width: 0; }
+    table.data td:first-child { flex: 1 1 100%; }
+    table.data td.check-col { flex: none; width: auto; }
+    table.data td.check-col + td { flex: 1 1 0; }
+    table.data td.num { margin-left: auto; }
+    table.data td.num ~ td.num { margin-left: 0; }
+    table.data td.actions-col { position: absolute; top: 8px; right: 0; width: auto; }
+    table.data td:empty { display: none; }
+    table.data tr:hover td { background: none; }
+
+    .topbar { gap: 8px; padding: 0 12px; }
+    .topbar .page-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .card-head { flex-wrap: wrap; }
+    .page-head > div:last-child:not(:first-child) { width: 100%; }
+    .page-head > div:last-child:not(:first-child) > .btn { flex: 1; }
+    .app-foot .seals { display: none; }
+}
+
+@media (max-width: 640px) {
+    /* Pestañas que no caben: se deslizan en vez de salirse de la pantalla. */
+    .segmented { display: flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+    .segmented button { flex: none; }
 }
