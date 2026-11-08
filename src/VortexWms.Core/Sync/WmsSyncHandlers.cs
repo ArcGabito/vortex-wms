@@ -249,6 +249,20 @@ public sealed class WmsSyncHandlers(
                     return "ubicación no válida";
                 return await LocationService.ApplyLocationAsync(c, tx, loc, r.UpdatedAt) ? null : "sin cambios (ya tenía una más nueva)";
             }
+            if (r.Kind == WmsRecordKinds.Task)
+            {
+                var task = r.Data.Deserialize<TaskData>(VortexJson.Options);
+                if (task is null || task.Id == Guid.Empty || task.SiteId == Guid.Empty || !Domain.TaskKinds.All.Contains(task.Kind))
+                    return "tarea no válida";
+                return await TaskService.ApplyTaskAsync(c, tx, task, r.UpdatedAt) ? null : "sin cambios (ya tenía una más nueva)";
+            }
+            if (r.Kind == WmsRecordKinds.Operator)
+            {
+                var op = r.Data.Deserialize<OperatorData>(VortexJson.Options);
+                if (op is null || op.Id == Guid.Empty || string.IsNullOrWhiteSpace(op.Name))
+                    return "operario no válido";
+                return await TaskService.ApplyOperatorAsync(c, tx, op, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
+            }
             if (r.Kind == WmsRecordKinds.ShelfLife)
             {
                 var life = r.Data.Deserialize<Domain.ItemShelfLife>(VortexJson.Options);

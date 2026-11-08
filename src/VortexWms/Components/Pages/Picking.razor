@@ -115,6 +115,40 @@
                 </div>
             </div>
         }
+
+        @if (_packing is { } packing && packing.Items.Count > 0 && (list.Picked.Count > 0 || packing.Packages.Any(p => p.ShipmentId is null)))
+        {
+            var abiertos = packing.Packages.Where(p => p.ShipmentId is null).ToList();
+            <div class="card">
+                <div class="card-head">
+                    <div>
+                        <h3>@T("packing.empaque")</h3>
+                        <p class="muted">@(abiertos.Count == 0 ? T("packing.sin_bultos") : Orders.Bultos(abiertos.Count, packing.TotalWeight))</p>
+                    </div>
+                    @if (!packing.AllPacked && Session.Can(WmsPermissions.Pick))
+                    {
+                        <button class="btn btn-sm" @onclick="NuevoBulto"><Icon Name="plus" Size="16" />@T("packing.nuevo_bulto")</button>
+                    }
+                </div>
+                <div class="card-body">
+                    @foreach (var b in abiertos)
+                    {
+                        <div class="list-row" @key="b.Id">
+                            <strong class="pick-code">#@b.Number</strong>
+                            <span class="two-line" style="flex:1">
+                                <span class="t1">@string.Join(", ", b.Lines.Select(l => $"{Fmt.Qty(l.Quantity)} {l.ItemName}"))</span>
+                                <span class="t2">@(b.WeightKg is { } w ? $"{Fmt.Qty(w)} kg" : T("packing.sin_peso"))@(b.Notes is null ? "" : $" · {b.Notes}")</span>
+                            </span>
+                            <button class="btn btn-ghost icon-btn sm" title="@(T("packing.deshacer"))" @onclick="() => QuitarBultoAsync(b)"><Icon Name="x" Size="16" /></button>
+                        </div>
+                    }
+                    @if (!packing.AllPacked && abiertos.Count > 0)
+                    {
+                        <p class="hint" style="margin-top:10px">@T("packing.falta", string.Join(", ", packing.Items.Where(i => i.Left > 0).Select(i => $"{Fmt.Qty(i.Left)} {i.ItemName}")))</p>
+                    }
+                </div>
+            </div>
+        }
     </div>
 }
 else if (!Loading)
@@ -122,10 +156,52 @@ else if (!Loading)
     <div class="page"><EmptyState Icon="clipboard" Title="@(T("picking.no_existe"))" Text="" /></div>
 }
 
+@if (_bulto is { } bulto)
+{
+    <Modal Title="@(T("packing.bulto", _bultoNumero))" Subtitle="@(T("packing.bulto_explica"))" Size="sm" Error="@_bultoError" OnClose="() => _bulto = null">
+        <ChildContent>
+            @foreach (var linea in bulto)
+            {
+                <div class="field" @key="linea.ItemId">
+                    <label>@linea.ItemName <span class="faint">(@T("packing.quedan", Fmt.Qty(linea.Left)))</span></label>
+                    <input class="control" type="number" inputmode="decimal" min="0" step="any" @bind="linea.Quantity" />
+                </div>
+            }
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("packing.peso_kg")</label>
+                    <input class="control" type="number" inputmode="decimal" min="0" step="any" @bind="_peso" />
+                </div>
+                <div class="field">
+                    <label>@T("packing.nota")</label>
+                    <input class="control" placeholder="@(T("packing.nota_ej"))" @bind="_nota" />
+                </div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _bulto = null">@T("packing.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="GuardarBultoAsync"><Icon Name="package-check" Size="16" />@T("packing.cerrar_bulto")</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
     [Parameter] public Guid Id { get; set; }
 
     private PickPlan? _list;
+    private PackingPlan? _packing;
+    private List<BultoLinea>? _bulto;
+    private int _bultoNumero;
+    private decimal? _peso;
+    private string? _nota, _bultoError;
+
+    private sealed class BultoLinea
+    {
+        public Guid ItemId { get; init; }
+        public string ItemName { get; init; } = "";
+        public decimal Left { get; init; }
+        public decimal Quantity { get; set; }
+    }
     private PickStop? _actual;
     private string? _ubicacion, _articulo, _error;
     private decimal _cantidad;
@@ -144,6 +220,7 @@ else if (!Loading)
     protected override async Task LoadAsync()
     {
         _list = await Wms.Orders.GetPickListAsync(Id);
+        _packing = _list is null ? null : await Wms.Orders.GetPackingAsync(Id);
         // Sigue en la misma parada si aún le falta; si no, la siguiente del recorrido.
         var siguiente = _list?.Stops.FirstOrDefault(s => _actual is not null && s.ItemId == _actual.ItemId && s.LocationId == _actual.LocationId)
             ?? _list?.Stops.FirstOrDefault();
@@ -201,6 +278,38 @@ else if (!Loading)
             _actual = null;
             await ReloadAsync();
         }
+    }
+
+    /// <summary>Nuevo bulto con lo que falta empacar ya puesto (se ajusta si va repartido en varios).</summary>
+    private void NuevoBulto()
+    {
+        if (_packing is not { } packing)
+            return;
+        _bulto = packing.Items.Where(i => i.Left > 0)
+            .Select(i => new BultoLinea { ItemId = i.ItemId, ItemName = i.ItemName, Left = i.Left, Quantity = i.Left }).ToList();
+        _bultoNumero = packing.Packages.Count + 1;
+        (_peso, _nota, _bultoError) = (null, null, null);
+    }
+
+    private async Task GuardarBultoAsync()
+    {
+        if (_bulto is not { } bulto)
+            return;
+        _busy = true;
+        _bultoError = await TryAsync(() => Wms.Orders.AddPackageAsync(Id, _peso, bulto.Select(l => new DocumentLine(l.ItemId, l.Quantity)).ToList(), _nota),
+            T("packing.bulto_listo", _bultoNumero));
+        _busy = false;
+        if (_bultoError is null)
+        {
+            _bulto = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task QuitarBultoAsync(PackageRow b)
+    {
+        await RunAsync(() => Wms.Orders.RemovePackageAsync(b.Id));
+        await ReloadAsync();
     }
 
     private async Task DeshacerAsync(PickRow pick)

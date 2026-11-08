@@ -8,6 +8,10 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Picking, empaque y tareas (fase 4b2):** empaque en bultos con peso y contenido que salen con el despacho
+  (`shipment.dispatched` con `packages`); reabastecimiento de ubicaciones de picking por mínimo y máximo; cola de tareas
+  por operario (guardar, preparar, reabastecer, contar) asignada por el supervisor, con pedidos que solo prepara su
+  responsable; picking por grupo de pedidos con un solo recorrido.
 - **Picking guiado y despacho parcial (fase 4b1):** recorrido por ubicación para preparar cada pedido, confirmando con
   el escaneo de la ubicación y del artículo; si falta stock se despacha lo preparado y el resto queda pendiente y
   reservado (`shipment.dispatched` con `partial`). Los pedidos por aprobar del ERP no reservan ni se preparan hasta

@@ -124,6 +124,14 @@
                     <ItemPicker Placeholder="@(T("locations.articulo_que_siempre_va_aqui"))" OnSelected="i => { e.FixedItemId = i.Id; _fijoNombre = i.Name; }" />
                 }
             </div>
+            @if (e.Kind == LocationKinds.Picking && e.FixedItemId is not null)
+            {
+                <div class="form-row">
+                    <div class="field"><label>@T("locations.minimo")</label><input class="control" type="number" inputmode="decimal" min="0" step="any" @bind="e.Min" /></div>
+                    <div class="field"><label>@T("locations.maximo")</label><input class="control" type="number" inputmode="decimal" min="0" step="any" @bind="e.Max" /></div>
+                </div>
+                <span class="hint">@T("locations.minimo_explica")</span>
+            }
             @if (_editId is not null)
             {
                 <label class="check-row"><input type="checkbox" @bind="e.IsActive" /><span>@T("locations.activa")</span></label>
@@ -246,6 +254,8 @@
         public string? Position { get; set; }
         public Guid? FixedItemId { get; set; }
         public bool IsActive { get; set; } = true;
+        public decimal? Min { get; set; }
+        public decimal? Max { get; set; }
     }
 
     private sealed class RangoModel
@@ -303,9 +313,13 @@
         _editando = new LocationDraftModel
         {
             Code = l.Code, Kind = l.Kind, Zone = l.Zone, Aisle = l.Aisle, Rack = l.Rack, Level = l.Level, Position = l.Position,
-            FixedItemId = l.FixedItemId, IsActive = l.IsActive,
+            FixedItemId = l.FixedItemId, IsActive = l.IsActive, Min = l.MinQuantity, Max = l.MaxQuantity,
         };
     }
+
+    /// <summary>Mínimo y máximo solo para una ubicación de picking con artículo fijo (en otras no se usan).</summary>
+    private static (decimal? Min, decimal? Max)? MinimoMaximo(LocationDraftModel e) =>
+        e.Kind == LocationKinds.Picking && e.FixedItemId is not null ? (e.Min, e.Max) : null;
 
     private async Task GuardarAsync()
     {
@@ -313,7 +327,7 @@
             return;
         _busy = true;
         _error = await TryAsync(() => Wms.Locations.SaveAsync(_editId, new LocationDraft(site, e.Code, e.Kind, e.Zone, e.Aisle, e.Rack, e.Level,
-            e.Position, e.FixedItemId, e.IsActive)), T("locations.ubicacion_guardada"));
+            e.Position, e.FixedItemId, e.IsActive, MinimoMaximo(e)?.Min, MinimoMaximo(e)?.Max)), T("locations.ubicacion_guardada"));
         _busy = false;
         if (_error is null)
             _editando = null;

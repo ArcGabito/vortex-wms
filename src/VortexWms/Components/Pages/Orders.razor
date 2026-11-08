@@ -29,6 +29,7 @@
             </div>
         </div>
         <div class="actions">
+            <button class="btn" disabled="@(!Session.Can(WmsPermissions.Pick))" @onclick="OpenGroupAsync"><Icon Name="layers" Size="18" />@T("orders.preparar_en_grupo")</button>
             <button class="btn btn-dark" disabled="@(!Session.Can(WmsPermissions.CreateOrder))" @onclick="OpenNew"><Icon Name="plus" Size="18" />@T("orders.nuevo_pedido")</button>
         </div>
     </div>
@@ -101,6 +102,10 @@
                                         @if (open && !o.PendingApproval)
                                         {
                                             <button disabled="@(!Session.Can(WmsPermissions.Pick))" @onclick='() => Nav.NavigateTo($"preparar/{o.Id}")'><Icon Name="barcode" Size="18" />@T("orders.preparar_con_recorrido")</button>
+                                        }
+                                        @if (open && !o.PendingApproval && Session.Can(WmsPermissions.ManageTasks))
+                                        {
+                                            <button @onclick='() => Nav.NavigateTo($"tareas?pedido={o.Id}")'><Icon Name="user" Size="18" />@T("orders.asignar_preparacion")</button>
                                         }
                                         @if (o.Status == OrderStatuses.Pending && !o.PendingApproval)
                                         {
@@ -231,6 +236,10 @@
                     }
                 </div>
             }
+            @if (dp.Packages is { Count: > 0 } bultos)
+            {
+                <div class="alert info"><Icon Name="package-check" Size="18" /><span>@Bultos(bultos.Count, bultos.Sum(b => b.WeightKg ?? 0))</span></div>
+            }
             @if (dp.Partial)
             {
                 <div class="alert warn"><Icon Name="alert" Size="18" /><span>@T("orders.despacho_parcial_explica")</span></div>
@@ -274,7 +283,61 @@
     </Modal>
 }
 
+@if (_group is { } group)
+{
+    <Modal Title="@(T("orders.preparar_en_grupo"))" Subtitle="@(T("orders.preparar_en_grupo_explica"))" Size="sm" Error="@_error" OnClose="() => _group = null">
+        <ChildContent>
+            @if (group.Count == 0)
+            {
+                <p class="muted">@T("orders.no_hay_pedidos_por_preparar")</p>
+            }
+            @foreach (var o in group)
+            {
+                <label class="check-row group-row" @key="o.Id">
+                    <input type="checkbox" checked="@_chosen.Contains(o.Id)" @onchange="e => Toggle(o.Id, e.Value is true)" />
+                    <span class="two-line" style="flex:1"><span class="t1">@o.Number</span><span class="t2">@(o.CustomerName ?? "—") · @(o.SiteName ?? "—")</span></span>
+                    <span class="muted">@Fmt.Qty(o.Units)</span>
+                </label>
+            }
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _group = null">@T("orders.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_chosen.Count < 2)" @onclick="StartGroup"><Icon Name="barcode" Size="16" />@T("orders.preparar_n", _chosen.Count)</button>
+        </Footer>
+    </Modal>
+}
+
 @code {
+    private List<OrderRow>? _group;
+    private readonly List<Guid> _chosen = [];
+
+    /// <summary>Pedidos abiertos y aprobados de las sedes del usuario, para recorrerlos juntos.</summary>
+    private async Task OpenGroupAsync()
+    {
+        _error = null;
+        _chosen.Clear();
+        _group = (await Wms.Orders.GetOrdersAsync(null, "open", 1, 100)).Items
+            .Where(o => !o.PendingApproval && o.SiteId != Guid.Empty).OrderBy(o => o.CreatedAt).ToList();
+    }
+
+    private void Toggle(Guid id, bool on)
+    {
+        _chosen.Remove(id);
+        if (on)
+            _chosen.Add(id);
+        _error = _group is { } g && _chosen.Select(c => g.First(o => o.Id == c).SiteId).Distinct().Count() > 1
+            ? T("orders.grupo_misma_sede") : null;
+    }
+
+    private void StartGroup()
+    {
+        if (_error is not null || _group is not { } g)
+            return;
+        // En el orden en que llegaron: si no alcanza el stock, se completa primero el más antiguo.
+        var ids = g.Where(o => _chosen.Contains(o.Id)).Select(o => o.Id);
+        Nav.NavigateTo($"preparar-grupo?pedidos={string.Join(",", ids)}");
+    }
+
     private sealed class NewForm
     {
         public Guid? CustomerId { get; set; }
@@ -301,6 +364,7 @@
         public OrderRow Order { get; } = order;
         public IReadOnlyList<OrderLineRow> Lines { get; } = lines;
         public List<TrackedPick> Picks { get; } = [];
+        public IReadOnlyList<PackageRow> Packages { get; set; } = [];
         public Guid? SiteId { get; set; } = order.SiteId == Guid.Empty ? null : order.SiteId;
         public string? Carrier { get; set; }
         public string? Tracking { get; set; }
@@ -425,6 +489,10 @@
     private Task StartPickingAsync(OrderRow order) =>
         RunAsync(() => Wms.Orders.StartPickingAsync(order.Id), T("orders.en_preparacion", order.Number));
 
+    /// <summary>"2 bultos · 3.2 kg" (en singular si es uno).</summary>
+    public static string Bultos(int count, decimal weight) =>
+        count == 1 ? T("packing.resumen_uno", Fmt.Qty(weight)) : T("packing.resumen", count, Fmt.Qty(weight));
+
     private async Task OpenDispatch(OrderRow order)
     {
         _error = null;
@@ -433,6 +501,7 @@
         var list = await Wms.Orders.GetPickListAsync(order.Id);
         var guided = list is { Picked.Count: > 0 };
         dispatch.Partial = guided && !list!.Complete;
+        dispatch.Packages = (await Wms.Orders.GetPackingAsync(order.Id)).Packages.Where(p => p.ShipmentId is null).ToList();
         foreach (var group in dispatch.Lines.GroupBy(l => l.ItemId))
         {
             var quantity = guided ? list!.Picked.Where(p => p.ItemId == group.Key).Sum(p => p.Quantity) : group.Sum(l => l.Quantity - l.Shipped);

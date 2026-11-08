@@ -332,12 +332,13 @@ public static class LocationKinds
 
 public sealed record LocationRow(
     Guid Id, Guid SiteId, string Code, string Kind, string? Zone, string? Aisle, string? Rack, string? Level, string? Position,
-    Guid? FixedItemId, string? FixedItemName, bool IsActive, decimal Units, int Items);
+    Guid? FixedItemId, string? FixedItemName, bool IsActive, decimal Units, int Items, decimal? MinQuantity = null,
+    decimal? MaxQuantity = null);
 
 /// <summary>Alta o edición de una ubicación. El código se arma con las partes si no se escribe.</summary>
 public sealed record LocationDraft(
     Guid SiteId, string? Code, string Kind, string? Zone = null, string? Aisle = null, string? Rack = null, string? Level = null,
-    string? Position = null, Guid? FixedItemId = null, bool IsActive = true);
+    string? Position = null, Guid? FixedItemId = null, bool IsActive = true, decimal? MinQuantity = null, decimal? MaxQuantity = null);
 
 /// <summary>Alta por rango: zona y pasillos y niveles de-a (A-01-01 … A-10-05).</summary>
 public sealed record LocationRange(Guid SiteId, string Zone, int AisleFrom, int AisleTo, int LevelFrom, int LevelTo, string Kind);
@@ -358,4 +359,73 @@ public static class PutawayReasons
     public const string Fixed = "fixed";
     public const string SameItem = "same_item";
     public const string Empty = "empty";
+}
+
+// ---------- Fase 4b2: reabastecimiento, tareas, empaque y picking por grupo ----------
+
+/// <summary>
+/// Ubicación de picking que bajó de su mínimo: cuánto traer (hasta el máximo) y de dónde (la primera de almacenamiento
+/// con stock libre, o lo que no tiene ubicación).
+/// </summary>
+public sealed record ReplenishmentRow(Guid SiteId, Guid LocationId, string LocationCode, Guid ItemId, string Sku, string ItemName, string Unit,
+    decimal Current, decimal Min, decimal Max, decimal Suggested, Guid? FromLocationId, string? FromCode, decimal Available);
+
+public static class TaskKinds
+{
+    public const string Putaway = "putaway";
+    public const string Pick = "pick";
+    public const string Replenish = "replenish";
+    public const string Count = "count";
+
+    public static readonly IReadOnlyList<string> All = [Putaway, Pick, Replenish, Count];
+}
+
+public static class TaskStatuses
+{
+    public const string Pending = "pending";
+    public const string Done = "done";
+    public const string Cancelled = "cancelled";
+}
+
+public sealed record TaskRow(
+    Guid Id, Guid SiteId, string? SiteName, string Kind, string Title, Guid? OrderId, string? OrderNumber, Guid? LocationId,
+    string? LocationCode, Guid? ItemId, string? ItemName, decimal? Quantity, Guid? AssigneeId, string? AssigneeName, string Status,
+    string? Notes, string? CreatedBy, DateTimeOffset CreatedAt, DateTimeOffset? DoneAt, string? DoneBy)
+{
+    public bool IsPending => Status == TaskStatuses.Pending;
+}
+
+/// <summary>Alta de una tarea por el supervisor. Preparar necesita el pedido; reabastecer y contar, la ubicación o el artículo.</summary>
+public sealed record TaskDraft(Guid SiteId, string Kind, Guid AssigneeId, string AssigneeName, string? Title = null, Guid? OrderId = null,
+    Guid? LocationId = null, Guid? ItemId = null, decimal? Quantity = null, string? Notes = null);
+
+public sealed record OperatorRow(Guid Id, string Name, string? Role, int PendingTasks);
+
+/// <summary>Bulto de un pedido: número, peso y contenido.</summary>
+public sealed record PackageRow(Guid Id, int Number, decimal? WeightKg, string? Notes, Guid? ShipmentId, DateTimeOffset CreatedAt,
+    string? UserName, IReadOnlyList<PackageLineRow> Lines);
+
+public sealed record PackageLineRow(Guid ItemId, string Sku, string ItemName, decimal Quantity);
+
+/// <summary>Por artículo: lo que se puede empacar (lo tomado o, sin picking, lo que falta despachar) y lo ya empacado.</summary>
+public sealed record PackItemRow(Guid ItemId, string Sku, string ItemName, string Unit, decimal Packable, decimal Packed)
+{
+    public decimal Left => Math.Max(0, Packable - Packed);
+}
+
+public sealed record PackingPlan(IReadOnlyList<PackItemRow> Items, IReadOnlyList<PackageRow> Packages)
+{
+    public bool AllPacked => Items.All(i => i.Left == 0);
+    public decimal TotalWeight => Packages.Where(p => p.ShipmentId is null).Sum(p => p.WeightKg ?? 0);
+}
+
+/// <summary>Una parada del picking por grupo: de una ubicación se toma para varios pedidos (cuánto para cada uno).</summary>
+public sealed record BatchStop(Guid ItemId, string Sku, string ItemName, string Unit, string? Barcode, Guid? LocationId, string? LocationCode,
+    decimal ToPick, IReadOnlyList<BatchSplit> Splits);
+
+public sealed record BatchSplit(Guid OrderId, string OrderNumber, decimal Quantity);
+
+public sealed record BatchPickPlan(IReadOnlyList<OrderRow> Orders, IReadOnlyList<BatchStop> Stops, IReadOnlyList<PickNeed> Needs)
+{
+    public bool Complete => Needs.All(n => n.Picked >= n.Remaining);
 }
