@@ -1,0 +1,377 @@
+@page "/devoluciones"
+@inherits WmsPage
+@using VortexWms.Core.Services
+
+<SectionContent SectionName="page-title">@T("returns.devoluciones")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("returns.devoluciones_y_mermas")</h2>
+            <p>@T("returns.explica")</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            @if (Session.Can(WmsPermissions.ReturnStock))
+            {
+                <button class="btn btn-dark" @onclick="() => NewAsync(ReturnKinds.Customer)"><Icon Name="arrows" Size="18" />@T("returns.devolucion_de_cliente")</button>
+            }
+            @if (Session.Can(WmsPermissions.Adjust))
+            {
+                <button class="btn btn-outline" @onclick="() => NewAsync(ReturnKinds.Supplier)"><Icon Name="truck" Size="18" />@T("returns.devolver_al_proveedor")</button>
+            }
+            @if (Session.Can(WmsPermissions.ReportShrinkage))
+            {
+                <button class="btn btn-outline" @onclick="NewShrinkageAsync"><Icon Name="alert" Size="18" />@T("returns.reportar_merma")</button>
+            }
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="segmented">
+            <button class="@(_tab == 0 ? "on" : "")" @onclick="() => _tab = 0">@T("returns.mermas") @if (_shrinkage.Count(s => s.Status == ShrinkageStatuses.Pending) is > 0 and var pend) {<span class="count">@pend</span>}</button>
+            <button class="@(_tab == 1 ? "on" : "")" @onclick="() => _tab = 1">@T("returns.de_clientes")</button>
+            <button class="@(_tab == 2 ? "on" : "")" @onclick="() => _tab = 2">@T("returns.a_proveedores")</button>
+        </div>
+    </div>
+
+    @if (_tab == 0)
+    {
+        <div class="card">
+            <div class="card-body">
+                @if (_shrinkage.Count == 0)
+                {
+                    <p class="muted" style="margin:0">@T("returns.sin_mermas")</p>
+                }
+                @foreach (var s in _shrinkage)
+                {
+                    <div class="list-row shrink-row" @key="s.Id">
+                        @if (s.Photo is { } photo)
+                        {
+                            <img class="shrink-photo" src="@photo" alt="@(T("returns.foto"))" />
+                        }
+                        <span class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@Fmt.Qty(s.Quantity) · @s.ItemName@(s.LotCode is { } lot ? $" · {lot}" : "")</span>
+                            <span class="t2">@Fmt.Reason(s.Reason) · @s.SiteName · @(s.ReportedBy ?? "—") · @Fmt.Ago(s.ReportedAt)@(s.Note is { } n ? $" · {n}" : "")</span>
+                        </span>
+                        @if (s.Status == ShrinkageStatuses.Pending)
+                        {
+                            @if (Session.Can(WmsPermissions.Adjust))
+                            {
+                                <button class="btn btn-sm btn-dark" disabled="@_busy" @onclick="() => DecideAsync(s, true)">@T("returns.aprobar")</button>
+                                <button class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="() => DecideAsync(s, false)">@T("returns.rechazar")</button>
+                            }
+                            else
+                            {
+                                <StatusPill Text="@(T("returns.por_aprobar"))" Tone="warn" />
+                            }
+                        }
+                        else
+                        {
+                            <StatusPill Text="@(s.Status == ShrinkageStatuses.Approved ? T("returns.aprobada") : T("returns.rechazada"))" Tone="@(s.Status == ShrinkageStatuses.Approved ? "good" : "neutral")" />
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+    else
+    {
+        var kind = _tab == 1 ? ReturnKinds.Customer : ReturnKinds.Supplier;
+        <div class="card">
+            <div class="card-body">
+                @if (!_returns.Any(r => r.Kind == kind))
+                {
+                    <p class="muted" style="margin:0">@T("returns.sin_devoluciones")</p>
+                }
+                @foreach (var r in _returns.Where(r => r.Kind == kind))
+                {
+                    <div class="list-row" @key="r.Id">
+                        <span class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@r.Number · @(r.PartyName ?? "—")@(r.OrderNumber is { } o ? $" · {o}" : "")</span>
+                            <span class="t2">@string.Join(", ", r.Lines.Select(l => $"{Fmt.Qty(l.Quantity)} {ItemName(l.ItemId)}{(kind == ReturnKinds.Customer ? $" ({Disposition(l.Disposition)})" : "")}")) · @r.Reason · @Fmt.Ago(r.CreatedAt)</span>
+                        </span>
+                    </div>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@if (_new is { } n)
+{
+    <Modal Title="@(n.Kind == ReturnKinds.Customer ? T("returns.devolucion_de_cliente") : T("returns.devolver_al_proveedor"))"
+           Subtitle="@(n.Kind == ReturnKinds.Customer ? T("returns.cliente_explica") : T("returns.proveedor_explica"))" Size="lg" Error="@_error" OnClose="() => _new = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("returns.sede")</label>
+                    <select class="select" @bind="n.SiteId">
+                        @foreach (var s in _sites)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+                @if (n.Kind == ReturnKinds.Customer)
+                {
+                    <div class="field">
+                        <label>@T("returns.pedido_despachado")</label>
+                        <select class="select" @bind="n.OrderId">
+                            <option value="">@T("returns.sin_pedido")</option>
+                            @foreach (var o in _orders.Where(o => o.SiteId == n.SiteId))
+                            {
+                                <option value="@o.Id">@o.Number · @o.CustomerName</option>
+                            }
+                        </select>
+                    </div>
+                }
+                else
+                {
+                    <div class="field">
+                        <label>@T("returns.proveedor")</label>
+                        <select class="select" @bind="n.PartyId">
+                            <option value="">@T("returns.elige")</option>
+                            @foreach (var p in _suppliers)
+                            {
+                                <option value="@p.Id">@p.Label</option>
+                            }
+                        </select>
+                    </div>
+                }
+            </div>
+            <ItemPicker OnPicked="scan => { if (!n.Lines.Any(l => l.Item.Id == scan.Item.Id)) n.Lines.Add(new Line { Item = scan.Item }); }" />
+            @foreach (var l in n.Lines)
+            {
+                <div class="list-row return-line" @key="l.Item.Id">
+                    <span class="t1" style="flex:1;min-width:0">@l.Item.Name</span>
+                    <input class="control" style="width:90px" type="number" min="0" step="any" @bind="l.Quantity" aria-label="@(T("returns.cantidad"))" />
+                    <input class="control" style="width:110px" placeholder="@(T("returns.lote"))" @bind="l.Lot" aria-label="@(T("returns.lote"))" />
+                    @if (n.Kind == ReturnKinds.Customer)
+                    {
+                        <select class="select" style="width:auto" @bind="l.Disposition" aria-label="@(T("returns.destino"))">
+                            @foreach (var d in ReturnDispositions.All)
+                            {
+                                <option value="@d">@Disposition(d)</option>
+                            }
+                        </select>
+                    }
+                    <button class="btn btn-ghost icon-btn sm" @onclick="() => n.Lines.Remove(l)" aria-label="@(T("returns.quitar"))"><Icon Name="x" Size="16" /></button>
+                </div>
+            }
+            <div class="field"><label>@T("returns.motivo")</label><input class="control" @bind="n.Reason" /></div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _new = null">@T("returns.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || n.Lines.Count == 0)" @onclick="SaveAsync">@T("returns.registrar")</button>
+        </Footer>
+    </Modal>
+}
+
+@if (_shrink is { } m)
+{
+    <Modal Title="@(T("returns.reportar_merma"))" Subtitle="@(T("returns.merma_explica"))" Error="@_error" OnClose="() => _shrink = null">
+        <ChildContent>
+            <div class="field">
+                <label>@T("returns.sede")</label>
+                <select class="select" @bind="m.SiteId">
+                    @foreach (var s in _sites)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+            <ItemPicker OnPicked="scan => m.Item = scan.Item" />
+            @if (m.Item is { } item)
+            {
+                <p class="muted" style="margin:0">@item.Name</p>
+            }
+            <div class="form-row">
+                <div class="field"><label>@T("returns.cantidad")</label><input class="control" type="number" min="0" step="any" @bind="m.Quantity" /></div>
+                <div class="field">
+                    <label>@T("returns.motivo")</label>
+                    <select class="select" @bind="m.Reason">
+                        @foreach (var r in new[] { AdjustmentReasons.Damage, AdjustmentReasons.Expired, AdjustmentReasons.Loss })
+                        {
+                            <option value="@r">@Fmt.Reason(r)</option>
+                        }
+                    </select>
+                </div>
+                <div class="field"><label>@T("returns.lote")</label><input class="control" @bind="m.Lot" /></div>
+            </div>
+            <div class="field"><label>@T("returns.nota")</label><input class="control" @bind="m.Note" /></div>
+            <div class="field">
+                <label>@T("returns.foto")</label>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+                    <button class="btn btn-sm" @onclick="TakePhotoAsync"><Icon Name="eye" Size="16" />@T("returns.tomar_foto")</button>
+                    <button class="btn btn-sm btn-ghost" @onclick="PickPhotoAsync">@T("returns.elegir_foto")</button>
+                    @if (m.Photo is { } photo)
+                    {
+                        <img class="shrink-photo" src="@photo" alt="@(T("returns.foto"))" />
+                    }
+                </div>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _shrink = null">@T("returns.cancelar")</button>
+            <button class="btn btn-dark" disabled="@(_busy || m.Item is null)" @onclick="ReportAsync">@T("returns.reportar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private int _tab;
+    private bool _busy;
+    private string? _error;
+    private IReadOnlyList<ShrinkageRow> _shrinkage = [];
+    private IReadOnlyList<ReturnRow> _returns = [];
+    private Dictionary<Guid, string> _itemNames = [];
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<OrderRow> _orders = [];
+    private IReadOnlyList<Option> _suppliers = [];
+    private NewReturn? _new;
+    private NewShrinkage? _shrink;
+
+    private sealed class Line
+    {
+        public required ItemRow Item { get; init; }
+        public decimal Quantity { get; set; } = 1;
+        public string? Lot { get; set; }
+        public string Disposition { get; set; } = ReturnDispositions.Restock;
+    }
+
+    private sealed class NewReturn
+    {
+        public required string Kind { get; init; }
+        public Guid SiteId { get; set; }
+        public Guid? OrderId { get; set; }
+        public Guid? PartyId { get; set; }
+        public List<Line> Lines { get; } = [];
+        public string Reason { get; set; } = "";
+    }
+
+    private sealed class NewShrinkage
+    {
+        public Guid SiteId { get; set; }
+        public ItemRow? Item { get; set; }
+        public decimal Quantity { get; set; } = 1;
+        public string Reason { get; set; } = AdjustmentReasons.Damage;
+        public string? Lot { get; set; }
+        public string? Note { get; set; }
+        public string? Photo { get; set; }
+    }
+
+    protected override async Task LoadAsync()
+    {
+        _shrinkage = await Wms.Returns.GetShrinkageAsync();
+        _returns = await Wms.Returns.GetReturnsAsync();
+        foreach (var id in _returns.SelectMany(r => r.Lines.Select(l => l.ItemId)).Distinct().Where(id => !_itemNames.ContainsKey(id)))
+            _itemNames[id] = (await Wms.Master.GetItemAsync(id))?.Name ?? "?";
+    }
+
+    private string ItemName(Guid id) => _itemNames.GetValueOrDefault(id, "?");
+
+    private static string Disposition(string d) => T("returns.destino." + d);
+
+    private async Task LoadFormDataAsync()
+    {
+        _error = null;
+        _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
+    }
+
+    private async Task NewAsync(string kind)
+    {
+        await LoadFormDataAsync();
+        if (kind == ReturnKinds.Customer)
+            _orders = (await Wms.Orders.GetOrdersAsync(null, null, 1, 200)).Items.Where(o => o.Shipped > 0).ToList();
+        else
+            _suppliers = await Wms.Master.GetPartyOptionsAsync(suppliers: true);
+        _new = new NewReturn { Kind = kind, SiteId = Session.DefaultSiteId ?? _sites.FirstOrDefault()?.Id ?? Guid.Empty };
+    }
+
+    private async Task SaveAsync()
+    {
+        var n = _new!;
+        var lines = n.Lines.Select(l => new ReturnLineDraft(l.Item.Id, l.Quantity, l.Lot, l.Disposition)).ToList();
+        _busy = true;
+        string? number = null;
+        if (n.Kind == ReturnKinds.Customer)
+        {
+            var customer = _orders.FirstOrDefault(o => o.Id == n.OrderId)?.CustomerId;
+            _error = await TryAsync(async () => number = await Wms.Returns.ReceiveCustomerReturnAsync(new CustomerReturnDraft(n.SiteId, customer, n.OrderId, lines, n.Reason)));
+        }
+        else
+        {
+            _error = n.PartyId is null ? T("returns.elige_el_proveedor")
+                : await TryAsync(async () => number = await Wms.Returns.ReturnToSupplierAsync(new SupplierReturnDraft(n.SiteId, n.PartyId.Value, null, lines, n.Reason)));
+        }
+        _busy = false;
+        if (_error is null)
+        {
+            Toasts.Success(T("returns.registrada", number));
+            _tab = n.Kind == ReturnKinds.Customer ? 1 : 2;
+            _new = null;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task NewShrinkageAsync()
+    {
+        await LoadFormDataAsync();
+        _shrink = new NewShrinkage { SiteId = Session.DefaultSiteId ?? _sites.FirstOrDefault()?.Id ?? Guid.Empty };
+    }
+
+    private async Task TakePhotoAsync()
+    {
+        try
+        {
+            if (Microsoft.Maui.Media.MediaPicker.Default.IsCaptureSupported
+                && await Microsoft.Maui.Media.MediaPicker.Default.CapturePhotoAsync() is { } photo)
+                _shrink!.Photo = await ToDataUrlAsync(photo);
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task PickPhotoAsync()
+    {
+        if (await Microsoft.Maui.Storage.FilePicker.Default.PickAsync(new Microsoft.Maui.Storage.PickOptions { FileTypes = Microsoft.Maui.Storage.FilePickerFileType.Images }) is { } file)
+            _shrink!.Photo = await ToDataUrlAsync(file);
+    }
+
+    private async Task<string?> ToDataUrlAsync(Microsoft.Maui.Storage.FileResult file)
+    {
+        await using var stream = await file.OpenReadAsync();
+        using var memory = new MemoryStream();
+        await stream.CopyToAsync(memory);
+        var type = file.FileName.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ? "image/png" : "image/jpeg";
+        var url = $"data:{type};base64,{Convert.ToBase64String(memory.ToArray())}";
+        if (url.Length <= ReturnService.MaxPhotoChars)
+            return url;
+        _error = T("error.merma_foto");
+        return null;
+    }
+
+    private async Task ReportAsync()
+    {
+        var m = _shrink!;
+        _busy = true;
+        _error = await TryAsync(() => Wms.Returns.ReportShrinkageAsync(m.SiteId, m.Item!.Id, m.Quantity, m.Reason, m.Note, m.Photo, m.Lot), T("returns.merma_reportada"));
+        _busy = false;
+        if (_error is null)
+        {
+            _shrink = null;
+            _tab = 0;
+            await ReloadAsync();
+        }
+    }
+
+    private async Task DecideAsync(ShrinkageRow s, bool approve)
+    {
+        _busy = true;
+        await RunAsync(() => Wms.Returns.DecideShrinkageAsync(s.Id, approve), approve ? T("returns.merma_aprobada") : T("returns.merma_rechazada"));
+        _busy = false;
+        await ReloadAsync();
+    }
+}

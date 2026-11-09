@@ -272,5 +272,16 @@ internal static class Schema
         CREATE TABLE count_results (id TEXT PRIMARY KEY, count_id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL);
         CREATE INDEX ix_count_results_count ON count_results (count_id);
         """,
+        // 11: fase 5b. Devoluciones de clientes y a proveedores (con sus líneas, como JSON) y mermas reportadas con su foto y
+        // su aprobación; registros del WMS (gana el más nuevo).
+        """
+        CREATE TABLE stock_returns (
+            id TEXT PRIMARY KEY, number TEXT NOT NULL, kind TEXT NOT NULL, site_id TEXT NOT NULL, party_id TEXT, order_id TEXT,
+            data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_stock_returns_order ON stock_returns (order_id);
+        CREATE TABLE shrinkage (
+            id TEXT PRIMARY KEY, site_id TEXT NOT NULL, item_id TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL,
+            created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        """,
     ];
 }

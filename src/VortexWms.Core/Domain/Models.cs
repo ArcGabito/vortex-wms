@@ -142,7 +142,13 @@ public static class MovementKinds
     public const string SaleVoid = "sale_void";
     public const string SaleReturn = "sale_return";
 
-    public static readonly string[] All = [Receipt, Adjustment, TransferOut, TransferIn, Shipment, Sale, SaleVoid, SaleReturn];
+    /// <summary>Devolución de un cliente recibida en el almacén (fase 5b).</summary>
+    public const string CustomerReturn = "customer_return";
+
+    /// <summary>Devolución al proveedor (fase 5b).</summary>
+    public const string SupplierReturn = "supplier_return";
+
+    public static readonly string[] All = [Receipt, Adjustment, TransferOut, TransferIn, Shipment, Sale, SaleVoid, SaleReturn, CustomerReturn, SupplierReturn];
 }
 
 /// <summary>Motivos de ajuste manual; viajan en <c>stock.adjusted.reason</c>.</summary>
@@ -154,7 +160,10 @@ public static class AdjustmentReasons
     public const string Found = "found";
     public const string Correction = "correction";
 
-    public static readonly string[] All = [Count, Damage, Loss, Found, Correction];
+    /// <summary>Vencido (merma).</summary>
+    public const string Expired = "expired";
+
+    public static readonly string[] All = [Count, Damage, Loss, Found, Correction, Expired];
 }
 
 public sealed record MovementRow(

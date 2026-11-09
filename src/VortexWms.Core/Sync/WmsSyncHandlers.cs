@@ -265,6 +265,10 @@ public sealed class WmsSyncHandlers(
             }
             if (r.Kind == WmsRecordKinds.Count)
                 return await CountService.ApplyCountAsync(c, tx, r.Data, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
+            if (r.Kind == WmsRecordKinds.Return)
+                return await ReturnService.ApplyReturnAsync(c, tx, r.Data, r.UpdatedAt) ? null : "sin cambios (ya tenía una más nueva)";
+            if (r.Kind == WmsRecordKinds.Shrinkage)
+                return await ReturnService.ApplyShrinkageAsync(c, tx, r.Data, r.UpdatedAt) ? null : "sin cambios (ya tenía una más nueva)";
             if (r.Kind == WmsRecordKinds.CountResult)
                 return await CountService.ApplyResultAsync(c, tx, r.Data, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
             if (r.Kind == WmsRecordKinds.ShelfLife)

@@ -1226,3 +1226,7 @@ table.data .strong { font-weight: 700; color: var(--ink); }
 .bad-text { color: #dc2626; font-weight: 600; }
 .good-text { color: #16a34a; font-weight: 600; }
 @media (max-width: 640px) { .count-line { flex-wrap: wrap; } .count-line .two-line { flex-basis: 100%; } }
+
+/* Devoluciones y mermas */
+.shrink-photo { width: 56px; height: 56px; object-fit: cover; border-radius: 8px; border: 1px solid var(--border); }
+.return-line { gap: 8px; flex-wrap: wrap; }

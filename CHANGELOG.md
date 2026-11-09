@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Devoluciones y mermas (fase 5b):** devoluciones de clientes con inspección (a stock, cuarentena o merma) y control
+  contra lo despachado (`shipment.returned`), devoluciones a proveedores al costo promedio (`goods.returned`) y mermas con
+  foto que se descuentan al aprobarlas el supervisor.
 - **Conteos (fase 5a):** conteos de artículos, por ubicaciones, cíclicos por clase ABC, de artículos con diferencias o
   inventario general; ciegos, con recuento automático sobre un umbral y aprobación del supervisor, que ajusta por la
   diferencia con lo esperado al empezar. Ubicaciones congeladas mientras se cuentan y exactitud de inventario.

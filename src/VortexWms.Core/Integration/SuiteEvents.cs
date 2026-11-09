@@ -18,6 +18,12 @@ public static class SuiteEvents
     public const string RecordUpserted = "wms.record.upserted";
     public const string StockRelocated = "stock.relocated";
 
+    /// <summary>Devolución de un cliente recibida e inspeccionada (fase 5b), para la nota de crédito del ERP.</summary>
+    public const string ShipmentReturned = "shipment.returned";
+
+    /// <summary>Devolución al proveedor (fase 5b).</summary>
+    public const string GoodsReturned = "goods.returned";
+
     // Publican el WMS, el ERP y el CRM
     public const string OrderCancelled = "order.cancelled";
 
@@ -135,6 +141,12 @@ public static class WmsRecordKinds
 
     /// <summary>Lo contado en una línea de un conteo. Id: <c>{conteo}:{línea}:{intento}</c> (1 conteo, 2 recuento).</summary>
     public const string CountResult = "count_result";
+
+    /// <summary>Devolución de un cliente o a un proveedor (con sus líneas). Id: el de la devolución.</summary>
+    public const string Return = "return";
+
+    /// <summary>Merma reportada (con foto) y su aprobación. Id: el de la merma.</summary>
+    public const string Shrinkage = "shrinkage";
 }
 
 /// <summary>
@@ -167,3 +179,15 @@ public sealed record OperatorData(Guid Id, string Name, string? Role);
 /// </summary>
 public sealed record StockRelocated(Guid SiteId, Guid ItemId, Guid? FromLocationId, Guid? ToLocationId, decimal Quantity,
     string? Reference = null);
+
+/// <summary><c>shipment.returned</c>: devolución de un cliente; <c>disposition</c>: restock, quarantine o scrap.</summary>
+public sealed record ShipmentReturned(Guid ReturnId, string Number, Guid? OrderId, Guid? ShipmentId, Guid? CustomerId, Guid SiteId, string Reason,
+    IReadOnlyList<ShipmentReturnedLine> Lines);
+
+public sealed record ShipmentReturnedLine(Guid ItemId, decimal Quantity, string Disposition, string? LotCode = null);
+
+/// <summary><c>goods.returned</c>: devolución al proveedor, al costo promedio.</summary>
+public sealed record GoodsReturned(Guid ReturnId, string Number, Guid? PurchaseOrderId, Guid SupplierId, Guid SiteId, string Reason,
+    IReadOnlyList<GoodsReturnedLine> Lines);
+
+public sealed record GoodsReturnedLine(Guid ItemId, decimal Quantity, decimal UnitCost);
