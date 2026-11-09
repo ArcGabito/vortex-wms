@@ -99,15 +99,16 @@ internal static class Valuation
 
     /// <summary>
     /// Tipo de operación de la Tabla 12 de SUNAT (para el PLE 13.1 de la fase 8): 01 venta, 02 compra, 05 devolución
-    /// recibida, 11 transferencia entre almacenes, 13 mermas, 28 ajuste por diferencia de inventario, 99 otros.
+    /// recibida, 06 devolución entregada, 11 transferencia entre almacenes, 13 mermas, 28 ajuste por diferencia de inventario, 99 otros.
     /// </summary>
     public static string OperationType(string kind, string? reason) => kind switch
     {
         MovementKinds.Sale or MovementKinds.Shipment => "01",
         MovementKinds.Receipt => "02",
-        MovementKinds.SaleVoid or MovementKinds.SaleReturn => "05",
+        MovementKinds.SaleVoid or MovementKinds.SaleReturn or MovementKinds.CustomerReturn => "05",
+        MovementKinds.SupplierReturn => "06",
         MovementKinds.TransferIn or MovementKinds.TransferOut => "11",
-        MovementKinds.Adjustment when reason is AdjustmentReasons.Damage or AdjustmentReasons.Loss => "13",
+        MovementKinds.Adjustment when reason is AdjustmentReasons.Damage or AdjustmentReasons.Loss or AdjustmentReasons.Expired => "13",
         MovementKinds.Adjustment => "28",
         _ => "99",
     };

@@ -97,7 +97,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | WMS-61 | Conteo cíclico programado por ubicación o clase ABC | Hecho | 5a |
 | WMS-62 | Conteo ciego, recuento automático e inventario general | Hecho | 5a |
 | WMS-63 | Aprobación de diferencias y exactitud de inventario | Hecho | 5a |
-| WMS-64 | Devoluciones de clientes y a proveedores; mermas con foto y aprobación | Pendiente | 5 |
+| WMS-64 | Devoluciones de clientes y a proveedores; mermas con foto y aprobación | Hecho | 5b |
 
 ### Operación con varias personas
 
@@ -343,6 +343,15 @@ conteos abiertos. **Exactitud de inventario** (líneas sin diferencia sobre el t
 pantalla. Un conteo puede asignarse a un operario (tarea Contar que lleva al conteo). Varios equipos: cada conteo de
 una línea es un registro aparte, así dos operarios que cuentan líneas distintas sin conexión suman los dos. Permisos
 nuevos: contar (operario) y aprobar conteos (supervisor). Pruebas en `CountsTests`. Sigue 5b: devoluciones y mermas.
+
+**Estado 5b, devoluciones y mermas (2026-11):** hecha; fase 5 terminada. Pantalla Devoluciones. **De clientes**: con o sin
+pedido (con pedido no se devuelve más de lo despachado, contando lo ya devuelto); cada línea se inspecciona y va **a
+stock**, **a cuarentena** (lote en cuarentena, o a la ubicación de cuarentena de la sede) o **a merma** (no vuelve al
+stock). Se publica `shipment.returned` (vortex-api#41) para la nota de crédito del ERP. **A proveedores** (supervisor):
+sale del stock al costo promedio y se publica `goods.returned`. **Mermas** por daño, vencimiento o pérdida, con **foto**
+(cámara o archivo, hasta 500 KB): no tocan el stock hasta que un supervisor las **aprueba** (ajuste con su motivo y
+costo) o las rechaza. Movimientos nuevos `customer_return` (Tabla 12: 05) y `supplier_return` (06); motivo de ajuste
+`expired` (13). Devoluciones y mermas son registros `return` y `shrinkage`. Pruebas en `ReturnsTests`.
 
 ## Fase 6: abastecimiento, reportes y etiquetas · M-L
 

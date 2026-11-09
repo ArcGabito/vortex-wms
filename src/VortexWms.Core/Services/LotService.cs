@@ -122,14 +122,20 @@ public sealed class LotService(WmsDatabase db, IWmsContext context, TimeProvider
             await RequireSiteAccessAsync(c, tx, siteId);
             Require(await c.ScalarAsync<long>("SELECT COUNT(*) FROM stock_lots WHERE site_id = $site AND item_id = $item AND lot_code = $lot", tx,
                 ("$site", siteId), ("$item", itemId), ("$lot", code)) > 0, T("error.el_lote_no_existe", code));
-            var data = new LotStatusData(siteId, itemId, code, status, Clean(note));
-            await ApplyStatusAsync(c, tx, data, now);
-            await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.RecordUpserted,
-                new WmsRecord(WmsRecordKinds.LotStatus, $"{siteId}:{itemId}:{code}", now, JsonSerializer.SerializeToElement(data, VortexJson.Options)),
-                subjectType: "lot", subjectId: code);
+            await PublishStatusAsync(c, tx, now, new LotStatusData(siteId, itemId, code, status, Clean(note)));
             await AuditAsync(c, tx, now, "lot.status", "item", itemId, code, $"{status}{(Clean(note) is { } n ? $": {n}" : "")}");
             return 0;
         }, ct);
+    }
+
+    /// <summary>Cambia el estado del lote y lo replica (en la transacción de quien llama).</summary>
+    internal static async Task PublishStatusAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, LotStatusData data)
+    {
+        await ApplyStatusAsync(c, tx, data, now);
+        await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.RecordUpserted,
+            new WmsRecord(WmsRecordKinds.LotStatus, $"{data.SiteId}:{data.ItemId}:{data.LotCode}", now,
+                JsonSerializer.SerializeToElement(data, VortexJson.Options)),
+            subjectType: "lot", subjectId: data.LotCode);
     }
 
     /// <summary>Aplica el estado si es más nuevo que el que hay (el último cambio gana, en este y en los demás equipos).</summary>

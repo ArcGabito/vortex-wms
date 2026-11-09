@@ -184,7 +184,7 @@ public sealed class LocationService(WmsDatabase db, IWmsContext context, TimePro
         }, ct);
     }
 
-    private async Task RelocateCoreAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid siteId, Guid itemId,
+    internal async Task RelocateCoreAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, Guid siteId, Guid itemId,
         Guid? fromLocationId, Guid? toLocationId, decimal quantity, string? reference)
     {
         {

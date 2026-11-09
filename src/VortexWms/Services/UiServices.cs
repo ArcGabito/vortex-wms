@@ -142,6 +142,8 @@ public static class Fmt
         MovementKinds.Sale => T("fmt.venta_pos"),
         MovementKinds.SaleVoid => T("fmt.venta_anulada"),
         MovementKinds.SaleReturn => T("fmt.devolucion"),
+        MovementKinds.CustomerReturn => T("fmt.devolucion_cliente"),
+        MovementKinds.SupplierReturn => T("fmt.devolucion_proveedor"),
         _ => kind,
     };
 
@@ -152,6 +154,7 @@ public static class Fmt
         AdjustmentReasons.Loss => T("fmt.perdida_robo"),
         AdjustmentReasons.Found => T("fmt.sobrante_encontrado"),
         AdjustmentReasons.Correction => T("fmt.correccion"),
+        AdjustmentReasons.Expired => T("fmt.vencido"),
         null => "",
         _ => reason,
     };
