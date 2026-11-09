@@ -1,0 +1,367 @@
+@page "/conteos"
+@page "/conteos/{Id:guid}"
+@inherits WmsPage
+
+<SectionContent SectionName="page-title">@T("counts.conteos")</SectionContent>
+
+@if (Id is not null && _view is { } v)
+{
+    var canApprove = Session.Can(WmsPermissions.ApproveCounts);
+    var active = CountStatuses.IsActive(v.Count.Status);
+    <div class="page">
+        <div class="page-head">
+            <div>
+                <h2>@v.Count.Number</h2>
+                <p>
+                    @{ var (st, tone) = Estado(v.Count.Status); }
+                    <StatusPill Text="@st" Tone="@tone" />
+                    <span class="muted"> @v.Count.SiteName · @Alcance(v.Count.Scope)@(v.Count.Blind ? $" · {T("counts.ciego")}" : "") · @T("counts.avance", v.Count.Counted, v.Count.Lines)</span>
+                </p>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+                <a class="btn btn-ghost" href="conteos"><Icon Name="chevron-left" Size="18" />@T("counts.volver")</a>
+                @if (v.Count.Status == CountStatuses.Open && Session.Can(WmsPermissions.Count))
+                {
+                    <button class="btn btn-dark" disabled="@_busy" @onclick="SubmitAsync"><Icon Name="send" Size="18" />@T("counts.enviar_a_revision")</button>
+                }
+                @if (v.Count.Status == CountStatuses.Review && canApprove)
+                {
+                    <button class="btn btn-dark" disabled="@_busy" @onclick="ApproveAsync"><Icon Name="check" Size="18" />@T("counts.aprobar_y_ajustar")</button>
+                }
+                @if (active && Session.Can(WmsPermissions.Adjust))
+                {
+                    <button class="btn btn-ghost" disabled="@_busy" @onclick="CancelAsync"><Icon Name="x" Size="18" />@T("counts.cancelar_conteo")</button>
+                }
+            </div>
+        </div>
+
+        @if (v.Note is { } note)
+        {
+            <p class="muted" style="margin:0">@note</p>
+        }
+        @if (v.FrozenLocations.Count > 0 && active)
+        {
+            <div class="alert info"><Icon Name="lock" Size="18" /><span>@T("counts.congeladas", v.FrozenLocations.Count)</span></div>
+        }
+        @if (_error is not null)
+        {
+            <div class="alert error"><Icon Name="alert" Size="18" /><span>@_error</span></div>
+        }
+
+        <div class="card">
+            <div class="card-body count-lines">
+                @foreach (var l in v.Lines)
+                {
+                    <div class="count-line @l.Status" @key="l.Line.LineNo">
+                        <div class="two-line" style="flex:1;min-width:0">
+                            <span class="t1">@l.ItemName@(l.Line.LotCode is { } lot ? $" · {T("counts.lote", lot)}" : "")</span>
+                            <span class="t2">@l.Sku@(l.Line.Locations.Count > 0 ? $" · {string.Join(", ", l.Line.Locations)}" : "")</span>
+                        </div>
+                        @if (l.Expected is { } expected)
+                        {
+                            <span class="count-num muted" title="@(T("counts.esperado"))">@Fmt.Qty(expected)</span>
+                        }
+                        @if (l.Status == CountLineStatuses.Recount)
+                        {
+                            <StatusPill Text="@(T("counts.recontar"))" Tone="warn" />
+                        }
+                        else if (l.Difference is { } diff && diff != 0)
+                        {
+                            <span class="count-num @(diff < 0 ? "bad-text" : "good-text")">@(diff > 0 ? "+" : "")@Fmt.Qty(diff)</span>
+                        }
+                        @if (active && Session.Can(WmsPermissions.Count))
+                        {
+                            <input class="control count-input" type="number" inputmode="decimal" min="0" step="any"
+                                   placeholder="@(l.Status == CountLineStatuses.Recount ? T("counts.recuento") : T("counts.contado"))"
+                                   value="@(l.Status == CountLineStatuses.Recount ? null : l.Final ?? l.First)"
+                                   @onchange="e => RecordAsync(l, e.Value?.ToString())" aria-label="@(T("counts.contado"))" />
+                            <span class="muted count-unit">@l.Unit</span>
+                        }
+                        else if (l.Final is { } final)
+                        {
+                            <strong class="count-num">@Fmt.Qty(final) @l.Unit</strong>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
+}
+else if (Id is null)
+{
+    <div class="page">
+        <div class="page-head">
+            <div>
+                <h2>@T("counts.conteos")</h2>
+                <p>@T("counts.explica")</p>
+            </div>
+            @if (Session.Can(WmsPermissions.Adjust))
+            {
+                <button class="btn btn-dark" @onclick="NewAsync"><Icon Name="plus" Size="18" />@T("counts.nuevo_conteo")</button>
+            }
+        </div>
+
+        <div class="stat-strip">
+            <StatTile Label="@(T("counts.exactitud"))" Value="@($"{_accuracy.Percent:0.#} %")" Hint="@(T("counts.exactitud_explica", _accuracy.Lines))" Icon="target" />
+            <StatTile Label="@(T("counts.abiertos"))" Value="@_counts.Count(c => CountStatuses.IsActive(c.Status)).ToString()" Hint="@(T("counts.por_aprobar", _counts.Count(c => c.Status == CountStatuses.Review)))" Icon="clipboard" />
+            @if (Session.Can(WmsPermissions.ViewCosts))
+            {
+                <StatTile Label="@(T("counts.valor_ajustado"))" Value="@Fmt.Money(_accuracy.AdjustedValue, _accuracy.CurrencyCode)" Hint="@(T("counts.ultimos_90"))" Icon="wallet" />
+            }
+        </div>
+
+        <div class="filters">
+            <label class="check-row"><input type="checkbox" checked="@_all" @onchange="async e => { _all = e.Value is true; await ReloadAsync(); }" /><span>@T("counts.ver_cerrados")</span></label>
+        </div>
+
+        @if (_counts.Count == 0 && !Loading)
+        {
+            <EmptyState Icon="clipboard" Title="@(T("counts.sin_conteos"))" Text="@(T("counts.sin_conteos_explica"))" />
+        }
+        else
+        {
+            <div class="card">
+                <div class="card-body">
+                    @foreach (var c in _counts)
+                    {
+                        var (st, tone) = Estado(c.Status);
+                        <a class="list-row" href="@($"conteos/{c.Id}")" @key="c.Id" style="color:inherit;text-decoration:none">
+                            <span class="two-line" style="flex:1;min-width:0">
+                                <span class="t1">@c.Number · @Alcance(c.Scope)</span>
+                                <span class="t2">@c.SiteName · @T("counts.avance", c.Counted, c.Lines)@(c.Differences > 0 ? $" · {T("counts.con_diferencia", c.Differences)}" : "") · @Fmt.Ago(c.CreatedAt)</span>
+                            </span>
+                            <StatusPill Text="@st" Tone="@tone" />
+                        </a>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+}
+
+@if (_new is { } n)
+{
+    <Modal Title="@(T("counts.nuevo_conteo"))" Subtitle="@(T("counts.nuevo_explica"))" Size="lg" Error="@_error" OnClose="() => _new = null">
+        <ChildContent>
+            <div class="form-row">
+                <div class="field">
+                    <label>@T("counts.sede")</label>
+                    <select class="select" value="@n.SiteId" @onchange="e => ChangeSiteAsync(e.Value?.ToString())">
+                        @foreach (var s in _sites)
+                        {
+                            <option value="@s.Id">@s.Name</option>
+                        }
+                    </select>
+                </div>
+                <div class="field">
+                    <label>@T("counts.que_contar")</label>
+                    <select class="select" @bind="n.Scope">
+                        @foreach (var scope in CountScopes.All)
+                        {
+                            <option value="@scope">@Alcance(scope)</option>
+                        }
+                    </select>
+                </div>
+            </div>
+
+            @switch (n.Scope)
+            {
+                case CountScopes.Items:
+                    <ItemPicker OnPicked="scan => { if (!n.Items.Any(x => x.Id == scan.Item.Id)) n.Items.Add(scan.Item); }" />
+                    <div class="chips">
+                        @foreach (var it in n.Items)
+                        {
+                            <span class="chip" @key="it.Id">@it.Name <button class="btn btn-ghost icon-btn sm" @onclick="() => n.Items.Remove(it)" aria-label="@(T("counts.quitar"))"><Icon Name="x" Size="14" /></button></span>
+                        }
+                    </div>
+                    break;
+                case CountScopes.Locations:
+                    <div class="field">
+                        <label>@T("counts.ubicaciones")</label>
+                        <input class="control" placeholder="@(T("counts.filtrar_ubicaciones"))" @bind="n.LocationFilter" @bind:event="oninput" />
+                        <div class="location-picks">
+                            @foreach (var loc in _locations.Where(l => string.IsNullOrWhiteSpace(n.LocationFilter) || l.Code.Contains(n.LocationFilter.Trim(), StringComparison.OrdinalIgnoreCase)).Take(200))
+                            {
+                                <label class="check-row" @key="loc.Id">
+                                    <input type="checkbox" checked="@n.Locations.Contains(loc.Id)" @onchange="e => { if (e.Value is true) n.Locations.Add(loc.Id); else n.Locations.Remove(loc.Id); }" />
+                                    <span>@loc.Code <span class="muted">(@Fmt.Qty(loc.Units))</span></span>
+                                </label>
+                            }
+                        </div>
+                    </div>
+                    break;
+                case CountScopes.Abc:
+                    <div class="segmented">
+                        @foreach (var cls in new[] { "A", "B", "C" })
+                        {
+                            <button class="@(n.Abc == cls ? "on" : "")" @onclick="() => n.Abc = cls">@T("counts.clase", cls) · @T("counts.tocan", _abc.Count(a => a.Class == cls && a.Due), _abc.Count(a => a.Class == cls))</button>
+                        }
+                    </div>
+                    <span class="hint">@T("counts.abc_explica")</span>
+                    break;
+                case CountScopes.Differences:
+                    <div class="field" style="max-width:220px">
+                        <label>@T("counts.con_ajustes_en")</label>
+                        <input class="control" type="number" min="1" max="365" @bind="n.Days" />
+                    </div>
+                    break;
+                default:
+                    <span class="hint">@T("counts.general_explica")</span>
+                    break;
+            }
+
+            <div class="form-row three">
+                <label class="check-row" style="align-self:end;margin-bottom:10px"><input type="checkbox" @bind="n.Blind" /><span>@T("counts.ciego_explica")</span></label>
+                <div class="field">
+                    <label>@T("counts.recontar_desde")</label>
+                    <input class="control" type="number" min="0" step="0.5" placeholder="@(T("counts.sin_recuento"))" @bind="n.RecountPercent" />
+                </div>
+                <div class="field">
+                    <label>@T("counts.asignar_a")</label>
+                    <select class="select" @bind="n.AssigneeId">
+                        <option value="">@T("counts.sin_asignar")</option>
+                        @foreach (var o in _operators)
+                        {
+                            <option value="@o.Id">@o.Name</option>
+                        }
+                    </select>
+                </div>
+            </div>
+            <div class="field"><label>@T("counts.nota")</label><input class="control" @bind="n.Note" /></div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _new = null">@T("counts.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="CreateAsync">@T("counts.crear")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    [Parameter] public Guid? Id { get; set; }
+
+    private IReadOnlyList<CountRow> _counts = [];
+    private CountAccuracy _accuracy = new(0, 0, 100, 0, 0);
+    private CountView? _view;
+    private bool _all, _busy;
+    private string? _error;
+    private NewCount? _new;
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<LocationRow> _locations = [];
+    private IReadOnlyList<AbcRow> _abc = [];
+    private IReadOnlyList<OperatorRow> _operators = [];
+
+    private sealed class NewCount
+    {
+        public Guid SiteId { get; set; }
+        public string Scope { get; set; } = CountScopes.Abc;
+        public List<ItemRow> Items { get; } = [];
+        public HashSet<Guid> Locations { get; } = [];
+        public string? LocationFilter { get; set; }
+        public string Abc { get; set; } = "A";
+        public int Days { get; set; } = 30;
+        public bool Blind { get; set; } = true;
+        public decimal? RecountPercent { get; set; } = 5;
+        public Guid? AssigneeId { get; set; }
+        public string? Note { get; set; }
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (Id is { } id)
+        {
+            _view = await Wms.Counts.GetAsync(id);
+            if (_view is null)
+                Nav.NavigateTo("conteos", replace: true);
+            return;
+        }
+        _counts = await Wms.Counts.GetCountsAsync(activeOnly: !_all);
+        _accuracy = await Wms.Counts.GetAccuracyAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _error = null;
+        await ReloadAsync();
+    }
+
+    private (string, string) Estado(string status) => status switch
+    {
+        CountStatuses.Open => (T("counts.estado.open"), "info"),
+        CountStatuses.Review => (T("counts.estado.review"), "warn"),
+        CountStatuses.Approved => (T("counts.estado.approved"), "good"),
+        _ => (T("counts.estado.cancelled"), "neutral"),
+    };
+
+    private static string Alcance(string scope) => T("counts.alcance." + scope);
+
+    private async Task RecordAsync(CountLineView l, string? value)
+    {
+        if (!decimal.TryParse(value, System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var qty))
+            return;
+        _error = await TryAsync(() => Wms.Counts.RecordAsync(Id!.Value, l.Line.LineNo, qty));
+        await ReloadAsync();
+    }
+
+    private async Task SubmitAsync()
+    {
+        _busy = true;
+        _error = await TryAsync(() => Wms.Counts.SubmitAsync(Id!.Value), T("counts.enviado"));
+        _busy = false;
+        await ReloadAsync();
+    }
+
+    private async Task ApproveAsync()
+    {
+        _busy = true;
+        var adjusted = 0;
+        _error = await TryAsync(async () => adjusted = await Wms.Counts.ApproveAsync(Id!.Value));
+        _busy = false;
+        if (_error is null)
+            Toasts.Success(T("counts.aprobado", adjusted));
+        await ReloadAsync();
+    }
+
+    private async Task CancelAsync()
+    {
+        _busy = true;
+        _error = await TryAsync(() => Wms.Counts.CancelAsync(Id!.Value), T("counts.cancelado"));
+        _busy = false;
+        await ReloadAsync();
+    }
+
+    private async Task NewAsync()
+    {
+        _error = null;
+        _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
+        _operators = await Wms.Tasks.GetOperatorsAsync();
+        _new = new NewCount();
+        await ChangeSiteAsync((Session.DefaultSiteId ?? _sites.FirstOrDefault()?.Id)?.ToString());
+    }
+
+    private async Task ChangeSiteAsync(string? value)
+    {
+        if (_new is null || !Guid.TryParse(value, out var site))
+            return;
+        _new.SiteId = site;
+        _new.Locations.Clear();
+        _locations = await Wms.Locations.GetLocationsAsync(site);
+        _abc = await Wms.Counts.GetAbcAsync(site);
+    }
+
+    private async Task CreateAsync()
+    {
+        var n = _new!;
+        var assignee = _operators.FirstOrDefault(o => o.Id == n.AssigneeId);
+        _busy = true;
+        Guid id = default;
+        _error = await TryAsync(async () => id = await Wms.Counts.CreateAsync(new CountDraft(n.SiteId, n.Scope, n.Blind,
+            n.Items.Select(i => i.Id).ToList(), n.Locations.ToList(), n.Abc, n.Days, n.RecountPercent, null, assignee?.Id, assignee?.Name,
+            n.Note)));
+        _busy = false;
+        if (_error is null)
+        {
+            _new = null;
+            Nav.NavigateTo($"conteos/{id}");
+        }
+    }
+}

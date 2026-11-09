@@ -263,6 +263,10 @@ public sealed class WmsSyncHandlers(
                     return "operario no válido";
                 return await TaskService.ApplyOperatorAsync(c, tx, op, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
             }
+            if (r.Kind == WmsRecordKinds.Count)
+                return await CountService.ApplyCountAsync(c, tx, r.Data, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
+            if (r.Kind == WmsRecordKinds.CountResult)
+                return await CountService.ApplyResultAsync(c, tx, r.Data, r.UpdatedAt) ? null : "sin cambios (ya tenía uno más nuevo)";
             if (r.Kind == WmsRecordKinds.ShelfLife)
             {
                 var life = r.Data.Deserialize<Domain.ItemShelfLife>(VortexJson.Options);

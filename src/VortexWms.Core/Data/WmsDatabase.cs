@@ -262,5 +262,15 @@ internal static class Schema
         CREATE TABLE order_package_lines (
             package_id TEXT NOT NULL, item_id TEXT NOT NULL, quantity REAL NOT NULL, PRIMARY KEY (package_id, item_id));
         """,
+        // 10: fase 5a, conteos. El conteo (cabecera, ubicaciones congeladas y líneas con lo esperado) y cada conteo de una
+        // línea son registros del WMS (gana el más nuevo); los de líneas distintas no se pisan.
+        """
+        CREATE TABLE counts (
+            id TEXT PRIMARY KEY, number TEXT NOT NULL, site_id TEXT NOT NULL, status TEXT NOT NULL, frozen TEXT NOT NULL DEFAULT '[]',
+            data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_counts_site ON counts (site_id, status);
+        CREATE TABLE count_results (id TEXT PRIMARY KEY, count_id TEXT NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_count_results_count ON count_results (count_id);
+        """,
     ];
 }

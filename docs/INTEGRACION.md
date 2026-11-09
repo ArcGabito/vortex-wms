@@ -75,7 +75,7 @@ de un pedido son del equipo que lo prepara y no se replican hasta el despacho.
 | `order.picking_started` | Al empezar a preparar un pedido | Determinista por pedido |
 | `order.cancelled` | Al cancelar un pedido (libera la reserva) | Determinista por pedido |
 | `receipt.cancelled` | Al anular una recepción esperada | Determinista por recepción |
-| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede, el estado de un lote, la vida útil de un artículo o una ubicación del mapa (`location`); al asignar o cerrar una tarea (`task`) y al registrarse un operario (`operator`) | Id nuevo; `updatedAt` en los datos |
+| `wms.record.upserted` | Al cambiar la ubicación o el mínimo de un artículo en una sede, el estado de un lote, la vida útil de un artículo o una ubicación del mapa (`location`); al asignar o cerrar una tarea (`task`) y al registrarse un operario (`operator`); al crear, enviar, aprobar o cancelar un conteo (`count`: cabecera, ubicaciones congeladas y líneas con lo esperado) y al contar una línea (`count_result`, Id `{conteo}:{línea}:{intento}`) | Id nuevo; `updatedAt` en los datos |
 | `stock.relocated` | Al guardar lo recibido o mover stock entre ubicaciones de una sede (no cambia el stock de la sede; solo lo consumen los demás equipos del WMS) | Id nuevo por traslado |
 
 `stock.adjusted` lleva el delta y la existencia resultante (`quantityDelta`, `quantityOnHand`), el motivo y la
