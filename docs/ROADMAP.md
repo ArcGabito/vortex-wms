@@ -94,9 +94,9 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
 | WMS-60 | Ajuste por conteo de un artículo | Hecho | — |
-| WMS-61 | Conteo cíclico programado por ubicación o clase ABC | Pendiente | 5 |
-| WMS-62 | Conteo ciego, recuento automático e inventario general | Pendiente | 5 |
-| WMS-63 | Aprobación de diferencias y exactitud de inventario | Pendiente | 5 |
+| WMS-61 | Conteo cíclico programado por ubicación o clase ABC | Hecho | 5a |
+| WMS-62 | Conteo ciego, recuento automático e inventario general | Hecho | 5a |
+| WMS-63 | Aprobación de diferencias y exactitud de inventario | Hecho | 5a |
 | WMS-64 | Devoluciones de clientes y a proveedores; mermas con foto y aprobación | Pendiente | 5 |
 
 ### Operación con varias personas
@@ -329,6 +329,20 @@ que llegaron. Pruebas en `TasksTests`.
 - **Mermas** con motivo, foto y aprobación.
 
 **Hub:** `shipment.returned` y `goods.returned`, para que el ERP emita notas de crédito y débito.
+
+**Estado 5a, conteos (2026-11):** hecha. Pantalla Conteos: un conteo es de **artículos elegidos**, de lo que hay **en unas
+ubicaciones**, **cíclico por clase ABC** (por el valor que salió en 90 días: A los que juntan el primer 80 %, B hasta el
+95 %, C el resto; A cada mes, B cada trimestre, C cada semestre, y se ve cuántos de cada clase toca contar), de los
+**artículos con ajustes** recientes o el **inventario general** de la sede. Una línea por artículo (y por lote en los que
+se controlan por lote; los de serie quedan para contarse escaneando) con lo esperado al empezar y dónde está. **Ciego**
+para el operario; si lo contado difiere más del umbral (5 % por defecto) pide **recuento**, y vale el recuento. Se envía a
+revisión y el **supervisor aprueba**: cada diferencia se ajusta (motivo conteo) por lo contado menos lo esperado al
+empezar, así lo que entró o salió durante el conteo no se pierde. Las ubicaciones contadas (todas, en el inventario
+general) quedan **congeladas**: no se trasladan ni reabastecen hasta cerrar el conteo, y un artículo no entra en dos
+conteos abiertos. **Exactitud de inventario** (líneas sin diferencia sobre el total, 90 días) y valor ajustado en la
+pantalla. Un conteo puede asignarse a un operario (tarea Contar que lleva al conteo). Varios equipos: cada conteo de
+una línea es un registro aparte, así dos operarios que cuentan líneas distintas sin conexión suman los dos. Permisos
+nuevos: contar (operario) y aprobar conteos (supervisor). Pruebas en `CountsTests`. Sigue 5b: devoluciones y mermas.
 
 ## Fase 6: abastecimiento, reportes y etiquetas · M-L
 

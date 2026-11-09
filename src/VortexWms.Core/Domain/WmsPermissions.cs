@@ -46,14 +46,20 @@ public static class WmsPermissions
     /// <summary>Asignar, reasignar y anular tareas de los operarios; preparar un pedido asignado a otro.</summary>
     public const string ManageTasks = "task.manage";
 
+    /// <summary>Contar en un conteo de inventario.</summary>
+    public const string Count = "stock.count";
+
+    /// <summary>Aprobar las diferencias de un conteo (se ajusta el stock) y ver lo esperado en un conteo ciego.</summary>
+    public const string ApproveCounts = "count.approve";
+
     public const string Operator = "operario";
     public const string Supervisor = "supervisor";
     public const string ReadOnly = "consulta";
 
     public static readonly PermissionMatrix Matrix = PermissionMatrix.Create(Operator,
         (ReadOnly, []),
-        (Operator, [Receive, Pick, Dispatch, Transfer, Relocate]),
-        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts, ManageLots, ManageLocations, Relocate, ManageTasks]));
+        (Operator, [Receive, Pick, Dispatch, Transfer, Relocate, Count]),
+        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts, ManageLots, ManageLocations, Relocate, ManageTasks, Count, ApproveCounts]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -74,6 +80,8 @@ public static class WmsPermissions
         ManageLocations => T("permiso.managelocations"),
         Relocate => T("permiso.relocate"),
         ManageTasks => T("permiso.managetasks"),
+        Count => T("permiso.count"),
+        ApproveCounts => T("permiso.approvecounts"),
         _ => permission,
     };
 }

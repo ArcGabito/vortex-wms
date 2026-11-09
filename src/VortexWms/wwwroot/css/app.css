@@ -1212,3 +1212,17 @@ table.data .strong { font-weight: 700; color: var(--ink); }
     /* Los selectores de varias líneas (tipo de tarea) muestran todas sus opciones. */
     .segmented[style*="flex-wrap"] { overflow: visible; flex-wrap: wrap; }
 }
+
+/* Conteos */
+.count-lines { display: flex; flex-direction: column; gap: 2px; }
+.count-line { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.count-line:last-child { border-bottom: none; }
+.count-line.done .t1::before { content: "✓ "; color: #16a34a; }
+.count-num { min-width: 56px; text-align: right; font-variant-numeric: tabular-nums; }
+.count-input { width: 110px; text-align: right; }
+.count-unit { width: 40px; font-size: 12px; }
+.location-picks { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 4px 12px; max-height: 240px; overflow: auto; margin-top: 8px; }
+.chips { display: flex; gap: 6px; flex-wrap: wrap; }
+.bad-text { color: #dc2626; font-weight: 600; }
+.good-text { color: #16a34a; font-weight: 600; }
+@media (max-width: 640px) { .count-line { flex-wrap: wrap; } .count-line .two-line { flex-basis: 100%; } }

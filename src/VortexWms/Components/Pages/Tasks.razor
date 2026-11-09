@@ -319,6 +319,7 @@
         TaskKinds.Pick when t.OrderId is { } o => $"preparar/{o}",
         TaskKinds.Replenish => "reabastecer",
         TaskKinds.Putaway => "guardado",
+        TaskKinds.Count when t.OrderId is { } count => $"conteos/{count}",
         TaskKinds.Count => t.LocationId is null ? "inventario" : "ubicaciones",
         _ => null,
     };

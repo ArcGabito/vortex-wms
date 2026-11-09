@@ -166,6 +166,16 @@ public sealed class TaskService(WmsDatabase db, IWmsContext context, TimeProvide
     }
 
     /// <summary>Cierra (por defecto, como hechas) las tareas pendientes de un tipo para un pedido o una ubicación.</summary>
+    /// <summary>Tarea de un documento (p. ej. un conteo, en <c>OrderId</c>) creada en la transacción del documento.</summary>
+    internal static async Task<Guid> CreateForDocumentAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string? user, Guid siteId,
+        string kind, Guid documentId, Guid assigneeId, string? assigneeName, string title, string? notes)
+    {
+        var data = new TaskData(Guid.NewGuid(), siteId, kind, title, documentId, null, null, null, assigneeId, assigneeName, TaskStatuses.Pending,
+            notes, user, now, null, null);
+        await PublishAsync(c, tx, now, data);
+        return data.Id;
+    }
+
     internal static async Task CloseOpenAsync(SqliteConnection c, SqliteTransaction tx, DateTimeOffset now, string? user, string kind,
         Guid? orderId = null, Guid? locationId = null, string status = TaskStatuses.Done)
     {

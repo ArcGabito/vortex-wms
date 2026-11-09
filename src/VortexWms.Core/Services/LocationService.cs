@@ -198,6 +198,9 @@ public sealed class LocationService(WmsDatabase db, IWmsContext context, TimePro
                 Require(found is not null, T("error.la_ubicacion_no_existe"));
                 var info = found!.Value;
                 Require(info.Site == siteId, T("error.la_ubicacion_es_de_otra_sede"));
+                // Mientras se cuenta, la ubicación no se toca (su conteo quedaría mal).
+                var frozenBy = await CountService.FrozenByAsync(c, tx, l);
+                Require(frozenBy is null, T("error.ubicacion_en_conteo", info.Code, frozenBy));
                 Require(loc != toLocationId || info.Active, T("error.la_ubicacion_esta_inactiva", info.Code));
             }
             var available = fromLocationId is { } from

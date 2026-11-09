@@ -129,6 +129,12 @@ public static class WmsRecordKinds
 
     /// <summary>Usuario que trabaja en el WMS (para asignarle tareas). Id: el del usuario en el hub.</summary>
     public const string Operator = "operator";
+
+    /// <summary>Conteo de inventario (cabecera y líneas). Id: el del conteo.</summary>
+    public const string Count = "count";
+
+    /// <summary>Lo contado en una línea de un conteo. Id: <c>{conteo}:{línea}:{intento}</c> (1 conteo, 2 recuento).</summary>
+    public const string CountResult = "count_result";
 }
 
 /// <summary>

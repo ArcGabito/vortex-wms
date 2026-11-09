@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Conteos (fase 5a):** conteos de artículos, por ubicaciones, cíclicos por clase ABC, de artículos con diferencias o
+  inventario general; ciegos, con recuento automático sobre un umbral y aprobación del supervisor, que ajusta por la
+  diferencia con lo esperado al empezar. Ubicaciones congeladas mientras se cuentan y exactitud de inventario.
 - **Picking, empaque y tareas (fase 4b2):** empaque en bultos con peso y contenido que salen con el despacho
   (`shipment.dispatched` con `packages`); reabastecimiento de ubicaciones de picking por mínimo y máximo; cola de tareas
   por operario (guardar, preparar, reabastecer, contar) asignada por el supervisor, con pedidos que solo prepara su
