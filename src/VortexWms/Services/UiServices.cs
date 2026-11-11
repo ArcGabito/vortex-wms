@@ -45,10 +45,15 @@ public sealed class Toasts
 /// <summary>Exporta archivos: en escritorio los guarda en Documentos/Vortex WMS y los abre; en móvil, los comparte.</summary>
 public sealed class FileExporter
 {
-    public async Task<string> ExportAsync(string fileName, string content, string contentType = "text/csv")
+    public Task<string> ExportAsync(string fileName, string content, string contentType = "text/csv") =>
+        ExportBytesAsync(fileName, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true).GetPreamble().Concat(Encoding.UTF8.GetBytes(content)).ToArray(),
+            contentType);
+
+    /// <summary>Un archivo binario (PDF, etiquetas).</summary>
+    public async Task<string> ExportBytesAsync(string fileName, byte[] content, string contentType)
     {
         var cache = Path.Combine(FileSystem.CacheDirectory, fileName);
-        await File.WriteAllTextAsync(cache, content, new UTF8Encoding(encoderShouldEmitUTF8Identifier: true));
+        await File.WriteAllBytesAsync(cache, content);
 #if WINDOWS || MACCATALYST
         var folder = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Vortex WMS");
         Directory.CreateDirectory(folder);
