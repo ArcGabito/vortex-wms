@@ -118,7 +118,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | WMS-81 | Sugerencia de compra que llega al ERP | Hecho: `purchase.requested`; el ERP la consume en su fase propia | 6a |
 | WMS-82 | Rotación, ABC, antigüedad, por vencer, sin movimiento y comparativo entre sedes | Hecho | 6b |
 | WMS-83 | Exportación a Excel, CSV y PDF | Hecho: Excel como CSV | 6b |
-| WMS-84 | Etiquetas de artículo, ubicación y bulto (ZPL y PDF) | Pendiente | 6 |
+| WMS-84 | Etiquetas de artículo, ubicación y bulto (ZPL y PDF) | Hecho: Zebra por red; Bluetooth pendiente | 6c |
 
 ### Canales, 3PL y fiscal
 
@@ -379,6 +379,13 @@ ABC** (salidas, stock promedio, vueltas, días de inventario; clase por valor de
 **kardex valorizado** del periodo (inicial, entradas, salidas y final con su valor) y **comparativo entre sedes**. Todos
 salen como tabla con totales y se exportan a **CSV** (Excel) y **PDF** (PDFsharp con Open Sans incrustada, horizontal si
 hay muchas columnas). Los valores, solo con `cost.view`. Pruebas en `ReportsTests`.
+
+**Estado 6c, etiquetas (2026-11):** hecha; fase 6 terminada. Pantalla Etiquetas: **artículos** (nombre, SKU, código de
+barras del artículo o su SKU y, si se pide, el precio), **ubicaciones** (código grande y en barras, para confirmar
+escaneando) y **bultos** de un pedido (cliente, "2/3", peso y código `{pedido}-{n}`). Tamaños 50×25, 100×50 y 100×150 mm y
+copias. Salen en **ZPL** a una Zebra en red (puerto 9100; la IP se guarda en el equipo) o en **PDF**, una por página o en
+hoja A4 de 3×8 adhesivas. Code 128 propio (juegos B y C con su control) para dibujar las barras en el PDF. La Zebra por
+Bluetooth queda pendiente. Pruebas en `LabelsTests`.
 
 ## Fase 7: canales y alcance · variable
 
