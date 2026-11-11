@@ -8,6 +8,9 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Abastecimiento (fase 6a):** máximo por artículo y sede, consumo diario, días de cobertura y sugerencia de compra por
+  proveedor que se envía al ERP (`purchase.requested`) o se exporta a CSV; lo pedido no se vuelve a sugerir hasta que
+  llega.
 - **Devoluciones y mermas (fase 5b):** devoluciones de clientes con inspección (a stock, cuarentena o merma) y control
   contra lo despachado (`shipment.returned`), devoluciones a proveedores al costo promedio (`goods.returned`) y mermas con
   foto que se descuentan al aprobarlas el supervisor.

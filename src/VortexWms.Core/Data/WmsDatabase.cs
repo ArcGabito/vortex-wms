@@ -283,5 +283,14 @@ internal static class Schema
             id TEXT PRIMARY KEY, site_id TEXT NOT NULL, item_id TEXT NOT NULL, status TEXT NOT NULL, data TEXT NOT NULL,
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
         """,
+        // 12: fase 6a. Máximo por artículo y sede, y solicitudes de compra (sugerencia enviada al ERP, con sus líneas como
+        // JSON); registro del WMS (gana el más nuevo).
+        """
+        ALTER TABLE stock ADD COLUMN max_stock REAL;
+        CREATE TABLE purchase_requests (
+            id TEXT PRIMARY KEY, number TEXT NOT NULL, site_id TEXT NOT NULL, supplier_id TEXT, status TEXT NOT NULL,
+            data TEXT NOT NULL, created_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+        CREATE INDEX ix_purchase_requests_site ON purchase_requests (site_id, status);
+        """,
     ];
 }

@@ -58,6 +58,9 @@ public static class WmsPermissions
     /// <summary>Reportar mermas (con foto); las aprueba quien ajusta el stock.</summary>
     public const string ReportShrinkage = "shrinkage.report";
 
+    /// <summary>Enviar la sugerencia de compra al ERP y cerrar solicitudes (fase 6a).</summary>
+    public const string RequestPurchase = "purchase.request";
+
     public const string Operator = "operario";
     public const string Supervisor = "supervisor";
     public const string ReadOnly = "consulta";
@@ -65,7 +68,7 @@ public static class WmsPermissions
     public static readonly PermissionMatrix Matrix = PermissionMatrix.Create(Operator,
         (ReadOnly, []),
         (Operator, [Receive, Pick, Dispatch, Transfer, Relocate, Count, ReturnStock, ReportShrinkage]),
-        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts, ManageLots, ManageLocations, Relocate, ManageTasks, Count, ApproveCounts, ReturnStock, ReportShrinkage]));
+        (Supervisor, [Receive, Pick, Dispatch, Transfer, CancelReceipt, CreateOrder, CancelOrder, Adjust, StockSettings, CreateParty, ViewAudit, ViewCosts, ManageLots, ManageLocations, Relocate, ManageTasks, Count, ApproveCounts, ReturnStock, ReportShrinkage, RequestPurchase]));
 
     public static string Describe(string permission) => permission switch
     {
@@ -90,6 +93,7 @@ public static class WmsPermissions
         ApproveCounts => T("permiso.approvecounts"),
         ReturnStock => T("permiso.returnstock"),
         ReportShrinkage => T("permiso.reportshrinkage"),
+        RequestPurchase => T("permiso.requestpurchase"),
         _ => permission,
     };
 }

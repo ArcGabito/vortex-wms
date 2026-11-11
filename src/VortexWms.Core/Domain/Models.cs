@@ -115,7 +115,7 @@ public enum StockStatus
 public sealed record StockRow(
     Guid SiteId, string SiteCode, string SiteName, Guid ItemId, string Sku, string ItemName, string? Category, string Unit,
     string? Barcode, decimal OnHand, decimal Reserved, decimal? ReorderPoint, string? Bin, decimal Price, string CurrencyCode,
-    DateTimeOffset UpdatedAt, decimal? AvgCost = null, decimal? CostValue = null)
+    DateTimeOffset UpdatedAt, decimal? AvgCost = null, decimal? CostValue = null, decimal? MaxStock = null)
 {
     public decimal Available => OnHand - Reserved;
 

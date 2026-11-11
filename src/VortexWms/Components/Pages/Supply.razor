@@ -1,0 +1,264 @@
+@page "/abastecimiento"
+@inherits WmsPage
+@using VortexWms.Core.Services
+@inject FileExporter Exporter
+
+<SectionContent SectionName="page-title">@T("supply.abastecimiento")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("supply.abastecimiento")</h2>
+            <p>@T("supply.explica")</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline" disabled="@(_siteId is null)" @onclick="ExportAsync"><Icon Name="download" Size="18" />@T("supply.exportar_csv")</button>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field" style="width:auto">
+            <label>@T("supply.sede")</label>
+            <select class="select" value="@(_siteId?.ToString() ?? "")" @onchange="SiteChangedAsync">
+                @foreach (var s in _sites)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+        <div class="field" style="width:auto">
+            <label>@T("supply.consumo_de")</label>
+            <select class="select" value="@_history" @onchange="async e => { _history = int.Parse(e.Value!.ToString()!); await ReloadAsync(); }">
+                @foreach (var d in new[] { 7, 30, 60, 90, 180 })
+                {
+                    <option value="@d">@T("supply.ultimos_n_dias", d)</option>
+                }
+            </select>
+        </div>
+        <div class="field" style="width:110px">
+            <label>@T("supply.plazo_proveedor")</label>
+            <input class="control" type="number" min="0" max="180" value="@_leadTime" @onchange="async e => { _leadTime = int.TryParse(e.Value?.ToString(), out var v) ? v : 7; await ReloadAsync(); }" />
+        </div>
+        <div class="field" style="width:110px">
+            <label>@T("supply.cubrir_dias")</label>
+            <input class="control" type="number" min="1" max="365" value="@_coverage" @onchange="async e => { _coverage = int.TryParse(e.Value?.ToString(), out var v) ? v : 30; await ReloadAsync(); }" />
+        </div>
+        <div class="field" style="width:auto">
+            <label>@T("supply.mostrar")</label>
+            <div class="segmented">
+                <button class="@(_onlyToOrder ? "on" : "")" @onclick="async () => { _onlyToOrder = true; await ReloadAsync(); }">@T("supply.por_pedir")</button>
+                <button class="@(_onlyToOrder ? "" : "on")" @onclick="async () => { _onlyToOrder = false; await ReloadAsync(); }">@T("supply.todo")</button>
+            </div>
+        </div>
+    </div>
+
+    @if (_rows.Count == 0 && !Loading)
+    {
+        <EmptyState Icon="package-check" Title="@(T(_onlyToOrder ? "supply.nada_por_pedir" : "supply.sin_articulos"))" Text="@(T("supply.nada_por_pedir_explica"))" />
+    }
+    else
+    {
+        @foreach (var grupo in _rows.GroupBy(r => r.SupplierId).OrderBy(g => g.First().SupplierName ?? "￿"))
+        {
+            var proveedorId = grupo.Key;
+            var proveedorNombre = grupo.First().SupplierName ?? T("supply.sin_proveedor");
+            var porPedir = grupo.Where(r => Cantidad(r) > 0).ToList();
+            <div class="card" style="margin-bottom:16px" @key="proveedorId">
+                <div class="card-head">
+                    <div>
+                        <h3>@proveedorNombre</h3>
+                        <div class="sub">@T("supply.n_articulos_por_pedir", porPedir.Count)</div>
+                    </div>
+                    @if (porPedir.Count > 0 && Session.Can(WmsPermissions.RequestPurchase))
+                    {
+                        <button class="btn btn-dark btn-sm" @onclick="() => Abrir(proveedorId, proveedorNombre, porPedir)"><Icon Name="truck" Size="16" />@T("supply.enviar_al_erp")</button>
+                    }
+                </div>
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                <th>@T("supply.articulo")</th><th class="num">@T("supply.disponible")</th><th class="num">@T("supply.en_camino")</th>
+                                <th class="num">@T("supply.min_max")</th><th class="num">@T("supply.consumo_diario")</th><th class="num">@T("supply.cobertura")</th>
+                                <th class="num">@T("supply.pedir")</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var r in grupo)
+                            {
+                                <tr @key="r.ItemId">
+                                    <td><div class="two-line"><span class="t1">@r.ItemName</span><span class="t2">@r.Sku · @r.Unit</span></div></td>
+                                    <td class="num">@Fmt.Qty(r.Available)</td>
+                                    <td class="num">
+                                        @Fmt.Qty(r.Incoming + r.Requested)
+                                        @if (r.Requested > 0)
+                                        {
+                                            <span class="muted" title="@(T("supply.ya_pedido"))"> (@Fmt.Qty(r.Requested))</span>
+                                        }
+                                    </td>
+                                    <td class="num">@(r.Minimum is { } min ? Fmt.Qty(min) : "—") / @(r.Maximum is { } max ? Fmt.Qty(max) : "—")</td>
+                                    <td class="num">@Fmt.Qty(r.DailyUsage)</td>
+                                    <td class="num @(r.CoverageDays is { } dias && dias <= _leadTime ? "warn-text" : "")">@(r.CoverageDays is { } cov ? T("supply.n_dias", Fmt.Qty(cov)) : "—")</td>
+                                    <td class="num">
+                                        <input class="control" style="width:90px;text-align:right" type="number" min="0" step="any" value="@Cantidad(r)"
+                                               @onchange="e => _qty[r.ItemId] = decimal.TryParse(e.Value?.ToString(), System.Globalization.NumberStyles.Number, System.Globalization.CultureInfo.InvariantCulture, out var qv) ? qv : 0" />
+                                    </td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        }
+    }
+
+    <div class="card">
+        <div class="card-head"><h3>@T("supply.solicitudes")</h3></div>
+        <div class="card-body">
+            @if (_requests.Count == 0)
+            {
+                <p class="muted" style="margin:0">@T("supply.sin_solicitudes")</p>
+            }
+            @foreach (var q in _requests)
+            {
+                <div class="list-row" @key="q.Id">
+                    <span class="two-line" style="flex:1;min-width:0">
+                        <span class="t1">@q.Number · @(q.SupplierName ?? T("supply.sin_proveedor"))</span>
+                        <span class="t2">@T("supply.n_lineas", q.Lines.Count) · @(q.CreatedBy ?? "—") · @Fmt.Ago(q.CreatedAt)@(q.NeededBy is { } para ? $" · {T("supply.para", Fmt.Date(para))}" : "")</span>
+                    </span>
+                    @if (q.Status == PurchaseRequestStatuses.Open)
+                    {
+                        <span class="tag">@T("supply.abierta")</span>
+                        @if (Session.Can(WmsPermissions.RequestPurchase))
+                        {
+                            <button class="btn btn-sm btn-ghost" disabled="@_busy" @onclick="() => CloseAsync(q.Id)">@T("supply.cerrar")</button>
+                        }
+                    }
+                    else
+                    {
+                        <span class="tag">@T("supply.cerrada")</span>
+                    }
+                </div>
+            }
+        </div>
+    </div>
+</div>
+
+@if (_send is { } envio)
+{
+    <Modal Title="@(T("supply.enviar_al_erp"))" Subtitle="@envio.SupplierName" Size="sm" Error="@_error" OnClose="() => _send = null">
+        <ChildContent>
+            <p class="muted">@T("supply.enviar_explica", envio.Lines.Count)</p>
+            <div class="field">
+                <label>@T("supply.se_necesita_para")</label>
+                <input class="control" type="date" @bind="envio.NeededBy" />
+            </div>
+            <div class="field">
+                <label>@T("supply.notas")</label>
+                <textarea class="control" rows="3" maxlength="500" @bind="envio.Notes"></textarea>
+            </div>
+        </ChildContent>
+        <Footer>
+            <button class="btn" @onclick="() => _send = null">@T("supply.cancelar")</button>
+            <button class="btn btn-dark" disabled="@_busy" @onclick="SendAsync"><Icon Name="check" Size="16" />@T("supply.enviar")</button>
+        </Footer>
+    </Modal>
+}
+
+@code {
+    private sealed class SendForm
+    {
+        public Guid? SupplierId { get; init; }
+        public string SupplierName { get; init; } = "";
+        public List<PurchaseRequestLineDraft> Lines { get; init; } = [];
+        public DateOnly? NeededBy { get; set; }
+        public string? Notes { get; set; }
+    }
+
+    private IReadOnlyList<SiteRow> _sites = [];
+    private IReadOnlyList<SupplyRow> _rows = [];
+    private IReadOnlyList<PurchaseRequestRow> _requests = [];
+    private readonly Dictionary<Guid, decimal> _qty = [];
+    private Guid? _siteId;
+    private int _history = 30, _leadTime = 7, _coverage = 30;
+    private bool _onlyToOrder = true, _busy;
+    private SendForm? _send;
+    private string? _error;
+
+    private SupplyParameters Parameters => new(_history, _leadTime, _coverage);
+
+    private decimal Cantidad(SupplyRow r) => _qty.TryGetValue(r.ItemId, out var q) ? q : r.Suggested;
+
+    protected override async Task LoadAsync()
+    {
+        if (_sites.Count == 0)
+        {
+            _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
+            _siteId ??= _sites.FirstOrDefault()?.Id;
+        }
+        if (_siteId is not { } site)
+            return;
+        _rows = await Wms.Supply.GetCoverageAsync(site, Parameters, _onlyToOrder);
+        _requests = await Wms.Supply.GetRequestsAsync(site, limit: 20);
+    }
+
+    private async Task SiteChangedAsync(ChangeEventArgs e)
+    {
+        _siteId = Guid.TryParse(e.Value?.ToString(), out var id) ? id : null;
+        _qty.Clear();
+        await ReloadAsync();
+    }
+
+    private void Abrir(Guid? supplierId, string supplierName, List<SupplyRow> rows)
+    {
+        _error = null;
+        _send = new SendForm
+        {
+            SupplierId = supplierId, SupplierName = supplierName,
+            Lines = rows.Select(r => new PurchaseRequestLineDraft(r.ItemId, Cantidad(r))).ToList(),
+            NeededBy = DateOnly.FromDateTime(DateTime.Today.AddDays(_leadTime)),
+        };
+    }
+
+    private async Task SendAsync()
+    {
+        if (_send is not { } envio || _siteId is not { } site)
+            return;
+        _busy = true;
+        string? number = null;
+        _error = await TryAsync(async () => number = await Wms.Supply.RequestPurchaseAsync(
+            new PurchaseRequestDraft(site, envio.SupplierId, envio.Lines, envio.NeededBy, envio.Notes)));
+        _busy = false;
+        if (_error is null)
+        {
+            Toasts.Success(T("supply.enviada", number ?? ""));
+            _send = null;
+            foreach (var l in envio.Lines)
+                _qty.Remove(l.ItemId);
+            await ReloadAsync();
+        }
+    }
+
+    private async Task CloseAsync(Guid id)
+    {
+        _busy = true;
+        await RunAsync(() => Wms.Supply.CloseRequestAsync(id), T("supply.solicitud_cerrada"));
+        _busy = false;
+    }
+
+    private async Task ExportAsync()
+    {
+        if (_siteId is not { } site)
+            return;
+        try
+        {
+            var csv = await Wms.Supply.ExportSuggestionCsvAsync(site, Parameters);
+            var path = await Exporter.ExportAsync($"sugerencia-compra-{DateTime.Now:yyyyMMdd-HHmm}.csv", csv);
+            Toasts.Success(T("inventory.exportado", Path.GetFileName(path)));
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(T("inventory.no_se_pudo_exportar", ex.Message));
+        }
+    }
+}
