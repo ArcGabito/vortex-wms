@@ -1,0 +1,234 @@
+@page "/etiquetas"
+@inherits WmsPage
+@using VortexWms.Core.Labels
+@inject FileExporter Exporter
+
+<SectionContent SectionName="page-title">@T("etiquetas.etiquetas")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("etiquetas.etiquetas")</h2>
+            <p>@T("etiquetas.explica")</p>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="segmented">
+            @foreach (var tipo in new[] { LabelKinds.Item, LabelKinds.Location, LabelKinds.Package })
+            {
+                <button class="@(_kind == tipo ? "on" : "")" @onclick="async () => { _kind = tipo; _selected.Clear(); await ReloadAsync(); }">@T("etiquetas.de_" + tipo)</button>
+            }
+        </div>
+        @if (_kind == LabelKinds.Location)
+        {
+            <div class="field" style="width:auto">
+                <label>@T("etiquetas.sede")</label>
+                <select class="select" value="@(_siteId?.ToString() ?? "")" @onchange="async e => { _siteId = Guid.TryParse(e.Value?.ToString(), out var sid) ? sid : null; _selected.Clear(); await ReloadAsync(); }">
+                    @foreach (var s in _sites)
+                    {
+                        <option value="@s.Id">@s.Name</option>
+                    }
+                </select>
+            </div>
+        }
+        <div class="field search">
+            <label>@T("etiquetas.buscar")</label>
+            <input class="control" value="@_search" @onchange="async e => { _search = e.Value?.ToString(); await ReloadAsync(); }" />
+        </div>
+    </div>
+
+    <div class="grid-2">
+        <div class="card">
+            <div class="card-head">
+                <h3>@T("etiquetas.elige")</h3>
+                @if (_kind != LabelKinds.Package && _options.Count > 0)
+                {
+                    <button class="btn btn-sm btn-ghost" @onclick="ToggleAll">@T(_selected.Count == _options.Count ? "etiquetas.ninguna" : "etiquetas.todas")</button>
+                }
+            </div>
+            <div class="card-body">
+                @if (_options.Count == 0)
+                {
+                    <span class="muted">@T("etiquetas.sin_resultados")</span>
+                }
+                @foreach (var (opcionId, texto, detalle) in _options)
+                {
+                    <label class="list-row" style="cursor:pointer" @key="opcionId">
+                        <input type="@(_kind == LabelKinds.Package ? "radio" : "checkbox")" name="etiqueta-opcion" checked="@_selected.Contains(opcionId)" @onchange="() => Toggle(opcionId)" />
+                        <span class="two-line" style="flex:1"><span class="t1">@texto</span><span class="t2">@detalle</span></span>
+                    </label>
+                }
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-head"><h3>@T("etiquetas.imprimir")</h3></div>
+            <div class="card-body" style="display:flex;flex-direction:column;gap:12px">
+                @if (_error is not null)
+                {
+                    <div class="alert warn"><Icon Name="alert" Size="18" /><span>@_error</span></div>
+                }
+                <div class="form-row">
+                    <div class="field">
+                        <label>@T("etiquetas.tamano")</label>
+                        <select class="select" @bind="_size">
+                            @foreach (var tam in LabelSize.All)
+                            {
+                                <option value="@tam.Key">@tam.Key mm</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label>@T("etiquetas.copias")</label>
+                        <input class="control" type="number" min="1" max="500" @bind="_copies" />
+                    </div>
+                </div>
+                @if (_kind == LabelKinds.Item)
+                {
+                    <label class="check"><input type="checkbox" @bind="_withPrice" />@T("etiquetas.con_precio")</label>
+                }
+                <label class="check"><input type="checkbox" @bind="_a4" />@T("etiquetas.hoja_a4")</label>
+                <button class="btn btn-outline" disabled="@(_busy || _selected.Count == 0)" @onclick="PdfAsync"><Icon Name="download" Size="18" />@T("etiquetas.pdf")</button>
+
+                <div class="field">
+                    <label>@T("etiquetas.zebra")</label>
+                    <div style="display:flex;gap:6px">
+                        <input class="control" placeholder="192.168.1.50" value="@_zebra" @onchange="e => SaveZebra(e.Value?.ToString())" />
+                        <button class="btn btn-dark" disabled="@(_busy || _selected.Count == 0 || string.IsNullOrWhiteSpace(_zebra))" @onclick="ZebraAsync">
+                            <Icon Name="barcode" Size="18" />@T("etiquetas.imprimir_zebra")
+                        </button>
+                    </div>
+                    <span class="hint">@T("etiquetas.zebra_explica")</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@code {
+    private const string ZebraKey = "labels.zebra";
+
+    private string _kind = LabelKinds.Item;
+    private IReadOnlyList<SiteRow> _sites = [];
+    private Guid? _siteId;
+    private string? _search, _error, _zebra;
+    private List<(Guid Id, string Text, string? Detail)> _options = [];
+    private readonly HashSet<Guid> _selected = [];
+    private string _size = LabelSize.Medium.Key;
+    private int _copies = 1;
+    private bool _withPrice, _a4, _busy;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _zebra = Preferences.Default.Get<string?>(ZebraKey, null);
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (_sites.Count == 0)
+        {
+            _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
+            _siteId ??= _sites.FirstOrDefault()?.Id;
+        }
+        _options = _kind switch
+        {
+            LabelKinds.Item => (await Wms.Master.GetItemsAsync(_search, null, 1, 60, includeInactive: false)).Items
+                .Select(i => (i.Id, i.Name, (string?)$"{i.Sku}{(i.Barcode is { } b ? $" · {b}" : "")}")).ToList(),
+            LabelKinds.Location when _siteId is { } site => (await Wms.Locations.GetLocationsAsync(site, search: _search))
+                .Select(l => (l.Id, l.Code, l.Zone)).ToList(),
+            LabelKinds.Package => (await Wms.Orders.GetOrdersAsync(_search, null, 1, 30)).Items
+                .Select(o => (o.Id, o.Number, (string?)o.CustomerName)).ToList(),
+            _ => [],
+        };
+    }
+
+    private void Toggle(Guid id)
+    {
+        if (_kind == LabelKinds.Package)
+        {
+            _selected.Clear();
+            _selected.Add(id);
+        }
+        else if (!_selected.Remove(id))
+            _selected.Add(id);
+    }
+
+    private void ToggleAll()
+    {
+        if (_selected.Count == _options.Count)
+            _selected.Clear();
+        else
+            _selected.UnionWith(_options.Select(o => o.Id));
+    }
+
+    private void SaveZebra(string? host)
+    {
+        _zebra = string.IsNullOrWhiteSpace(host) ? null : host.Trim();
+        if (_zebra is null)
+            Preferences.Default.Remove(ZebraKey);
+        else
+            Preferences.Default.Set(ZebraKey, _zebra);
+    }
+
+    private async Task<IReadOnlyList<LabelData>?> LabelsAsync()
+    {
+        _error = null;
+        try
+        {
+            return _kind switch
+            {
+                LabelKinds.Item => await Wms.Labels.ForItemsAsync(_selected.ToList(), _withPrice),
+                LabelKinds.Location => await Wms.Labels.ForLocationsAsync(_siteId!.Value, _selected.ToList()),
+                _ => await Wms.Labels.ForPackagesAsync(_selected.First()),
+            };
+        }
+        catch (WmsValidationException ex)
+        {
+            _error = ex.Message;
+            return null;
+        }
+    }
+
+    private async Task PdfAsync()
+    {
+        _busy = true;
+        if (await LabelsAsync() is { } labels)
+        {
+            try
+            {
+                var bytes = VortexWms.Core.Pdf.LabelPdf.Render(labels, LabelSize.Parse(_size), _a4, _copies);
+                var path = await Exporter.ExportBytesAsync($"etiquetas-{_kind}-{DateTime.Now:yyyyMMdd-HHmm}.pdf", bytes, "application/pdf");
+                Toasts.Success(T("inventory.exportado", Path.GetFileName(path)));
+            }
+            catch (Exception ex)
+            {
+                _error = T("inventory.no_se_pudo_exportar", ex.Message);
+            }
+        }
+        _busy = false;
+    }
+
+    private async Task ZebraAsync()
+    {
+        if (_zebra is not { } host)
+            return;
+        _busy = true;
+        if (await LabelsAsync() is { } labels)
+        {
+            var (address, port) = host.Contains(':') && int.TryParse(host[(host.LastIndexOf(':') + 1)..], out var p)
+                ? (host[..host.LastIndexOf(':')], p) : (host, 9100);
+            try
+            {
+                await Zpl.SendAsync(address, port, Zpl.Render(labels, LabelSize.Parse(_size), _copies));
+                Toasts.Success(T("etiquetas.enviadas", labels.Count));
+            }
+            catch (Exception ex)
+            {
+                _error = T("etiquetas.zebra_error", host, ex.Message);
+            }
+        }
+        _busy = false;
+    }
+}

@@ -8,6 +8,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Etiquetas (fase 6c):** de artículo, ubicación y bulto con código de barras Code 128, en ZPL para Zebra en red o en PDF
+  (una por página u hoja A4 de 3×8).
 - **Reportes (fase 6b):** rotación y ABC, antigüedad, por vencer, sin movimiento, exactitud de conteos, productividad por
   operario, kardex valorizado del periodo y comparativo entre sedes, con exportación a CSV y PDF.
 - **Abastecimiento (fase 6a):** máximo por artículo y sede, consumo diario, días de cobertura y sugerencia de compra por
