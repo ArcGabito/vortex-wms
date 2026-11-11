@@ -1,0 +1,198 @@
+@page "/reportes"
+@inherits WmsPage
+@using VortexWms.Core.Services
+@inject FileExporter Exporter
+
+<SectionContent SectionName="page-title">@T("reportes.reportes")</SectionContent>
+
+<div class="page">
+    <div class="page-head">
+        <div>
+            <h2>@T("reportes.reportes")</h2>
+            <p>@T("reportes.explica")</p>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn-outline" disabled="@(_report is null)" @onclick="CsvAsync"><Icon Name="download" Size="18" />@T("reportes.excel")</button>
+            <button class="btn btn-dark" disabled="@(_report is null)" @onclick="PdfAsync"><Icon Name="download" Size="18" />@T("reportes.pdf")</button>
+        </div>
+    </div>
+
+    <div class="filters">
+        <div class="field" style="width:auto">
+            <label>@T("reportes.reporte")</label>
+            <select class="select" value="@_kind" @onchange="async e => { _kind = e.Value?.ToString() ?? ReportKinds.Rotation; await ReloadAsync(); }">
+                @foreach (var tipo in ReportKinds.All)
+                {
+                    <option value="@tipo">@T("reportes.tipo." + tipo)</option>
+                }
+            </select>
+        </div>
+        <div class="field" style="width:auto">
+            <label>@T("reportes.sede")</label>
+            <select class="select" value="@(_siteId?.ToString() ?? "")" @onchange="async e => { _siteId = Guid.TryParse(e.Value?.ToString(), out var sid) ? sid : null; await ReloadAsync(); }">
+                <option value="">@T("reportes.todas_las_sedes")</option>
+                @foreach (var s in _sites)
+                {
+                    <option value="@s.Id">@s.Name</option>
+                }
+            </select>
+        </div>
+        @if (_kind is ReportKinds.Expiring or ReportKinds.Idle)
+        {
+            <div class="field" style="width:110px">
+                <label>@T(_kind == ReportKinds.Expiring ? "reportes.vencen_en" : "reportes.sin_mover_en")</label>
+                <input class="control" type="number" min="1" max="730" value="@_days" @onchange="async e => { _days = int.TryParse(e.Value?.ToString(), out var dv) ? dv : 60; await ReloadAsync(); }" />
+            </div>
+        }
+        else
+        {
+            <div class="field" style="width:auto">
+                <label>@T("reportes.desde")</label>
+                <input class="control" type="date" value="@_from.ToString("yyyy-MM-dd")" @onchange="e => DateAsync(e, true)" />
+            </div>
+            <div class="field" style="width:auto">
+                <label>@T("reportes.hasta")</label>
+                <input class="control" type="date" value="@_to.ToString("yyyy-MM-dd")" @onchange="e => DateAsync(e, false)" />
+            </div>
+        }
+    </div>
+
+    @if (_error is not null)
+    {
+        <div class="alert warn"><Icon Name="alert" Size="18" /><span>@_error</span></div>
+    }
+
+    @if (_report is { } rep)
+    {
+        <div class="card">
+            <div class="card-head">
+                <div>
+                    <h3>@rep.Title</h3>
+                    <div class="sub">@rep.Subtitle@(ReportKinds.HasValues(rep.Kind) && rep.CurrencyCode is { } moneda ? $" · {moneda}" : "")</div>
+                </div>
+            </div>
+            @if (rep.Rows.Count == 0)
+            {
+                <div class="card-body"><span class="muted">@T("reportes.sin_datos")</span></div>
+            }
+            else
+            {
+                <div class="table-wrap">
+                    <table class="data">
+                        <thead>
+                            <tr>
+                                @foreach (var col in rep.Columns)
+                                {
+                                    <th class="@(col.Type == ReportColumnType.Text ? "" : "num")">@col.Header</th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var fila in rep.Rows.Take(500))
+                            {
+                                <tr>
+                                    @for (var i = 0; i < rep.Columns.Count; i++)
+                                    {
+                                        var tipoCol = rep.Columns[i].Type;
+                                        <td class="@(tipoCol == ReportColumnType.Text ? "" : "num")">@ReportService.Format(fila[i], tipoCol, Fmt.Culture)</td>
+                                    }
+                                </tr>
+                            }
+                            @if (rep.Totals is { } totales)
+                            {
+                                <tr style="font-weight:700">
+                                    @for (var j = 0; j < rep.Columns.Count; j++)
+                                    {
+                                        var tipoTotal = rep.Columns[j].Type;
+                                        <td class="@(tipoTotal == ReportColumnType.Text ? "" : "num")">@(totales[j] is null ? "" : ReportService.Format(totales[j], tipoTotal, Fmt.Culture))</td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+                @if (rep.Rows.Count > 500)
+                {
+                    <div class="card-body"><span class="muted">@T("reportes.mostrando_500", rep.Rows.Count)</span></div>
+                }
+            }
+        </div>
+    }
+</div>
+
+@code {
+    private IReadOnlyList<SiteRow> _sites = [];
+    private WmsReport? _report;
+    private string _kind = ReportKinds.Rotation;
+    private Guid? _siteId;
+    private DateOnly _from, _to;
+    private int _days = 60;
+    private string? _error;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        _to = DateOnly.FromDateTime(DateTime.Today);
+        _from = new DateOnly(_to.Year, _to.Month, 1);
+    }
+
+    protected override async Task LoadAsync()
+    {
+        if (_sites.Count == 0)
+            _sites = await Wms.Master.GetSitesAsync(activeOnly: true, mineOnly: true);
+        _error = null;
+        try
+        {
+            _report = await Wms.Reports.GetAsync(new ReportQuery(_kind, _siteId, _from, _to, _days));
+        }
+        catch (WmsValidationException ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private async Task DateAsync(ChangeEventArgs e, bool start)
+    {
+        if (!DateOnly.TryParse(e.Value?.ToString(), System.Globalization.CultureInfo.InvariantCulture, out var date))
+            return;
+        if (start)
+            _from = date;
+        else
+            _to = date;
+        await ReloadAsync();
+    }
+
+    private string FileName(string ext) => $"vortex-wms-{_kind}-{_from:yyyyMMdd}-{_to:yyyyMMdd}.{ext}";
+
+    private async Task CsvAsync()
+    {
+        if (_report is not { } rep)
+            return;
+        try
+        {
+            var path = await Exporter.ExportAsync(FileName("csv"), ReportService.ToCsv(rep));
+            Toasts.Success(T("inventory.exportado", Path.GetFileName(path)));
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(T("inventory.no_se_pudo_exportar", ex.Message));
+        }
+    }
+
+    private async Task PdfAsync()
+    {
+        if (_report is not { } rep)
+            return;
+        try
+        {
+            var company = (await Wms.Master.GetCompanyAsync()) is { } co ? co.TradeName ?? co.LegalName : "Vortex WMS";
+            var bytes = VortexWms.Core.Pdf.ReportPdf.Render(rep, company, Fmt.Culture);
+            var path = await Exporter.ExportBytesAsync(FileName("pdf"), bytes, "application/pdf");
+            Toasts.Success(T("inventory.exportado", Path.GetFileName(path)));
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(T("inventory.no_se_pudo_exportar", ex.Message));
+        }
+    }
+}

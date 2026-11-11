@@ -7,6 +7,8 @@ Vortex WMS incluye o usa los siguientes componentes de terceros, cada uno con su
 | [Montserrat](https://github.com/JulietaUla/Montserrat) | Tipografía de la interfaz (`src/VortexWms/wwwroot/fonts`) | SIL Open Font License 1.1 ([texto](../src/VortexWms/wwwroot/fonts/OFL.txt)) |
 | [.NET MAUI](https://github.com/dotnet/maui) y ASP.NET Core Components | Aplicación y BlazorWebView | MIT |
 | [Microsoft.Data.Sqlite](https://github.com/dotnet/efcore) | Base de datos local | MIT |
+| [Open Sans](https://github.com/googlefonts/opensans) | Tipografía de los PDF (`src/VortexWms.Core/Recursos/Fuentes`) | SIL Open Font License 1.1 ([texto](../src/VortexWms.Core/Recursos/Fuentes/OFL.txt)) |
+| [PDFsharp y MigraDoc](https://github.com/empira/PDFsharp) | PDF de reportes y etiquetas | MIT |
 | [SQLitePCLRaw](https://github.com/ericsink/SQLitePCL.raw) / [SQLite](https://sqlite.org) | Motor SQLite | Apache 2.0 / dominio público |
 | [VortexApi.Client](https://github.com/ArcGabito/vortex-api) | SDK del hub | AGPL-3.0 |
 | [xUnit](https://github.com/xunit/xunit) | Pruebas | Apache 2.0 |

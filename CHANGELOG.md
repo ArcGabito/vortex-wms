@@ -8,6 +8,8 @@ y el proyecto sigue [Versionado Semántico](https://semver.org/lang/es/).
 ## [Unreleased]
 
 ### Added
+- **Reportes (fase 6b):** rotación y ABC, antigüedad, por vencer, sin movimiento, exactitud de conteos, productividad por
+  operario, kardex valorizado del periodo y comparativo entre sedes, con exportación a CSV y PDF.
 - **Abastecimiento (fase 6a):** máximo por artículo y sede, consumo diario, días de cobertura y sugerencia de compra por
   proveedor que se envía al ERP (`purchase.requested`) o se exporta a CSV; lo pedido no se vuelve a sugerir hasta que
   llega.

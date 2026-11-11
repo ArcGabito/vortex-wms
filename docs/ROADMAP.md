@@ -108,7 +108,7 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 | WMS-72 | Sedes por usuario | Hecho | 0 |
 | WMS-73 | Auditoría de ajustes, recepciones anuladas y pedidos cancelados | Hecho | 0 |
 | WMS-74 | Cola de tareas por operario asignada por el supervisor | Hecho | 4b2 |
-| WMS-75 | Productividad por operario | Pendiente | 6 |
+| WMS-75 | Productividad por operario | Hecho | 6b |
 
 ### Abastecimiento, reportes y etiquetas
 
@@ -116,8 +116,8 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 |---|---|---|---|
 | WMS-80 | Mínimo y máximo por sede, consumo promedio y cobertura | Hecho | 6a |
 | WMS-81 | Sugerencia de compra que llega al ERP | Hecho: `purchase.requested`; el ERP la consume en su fase propia | 6a |
-| WMS-82 | Rotación, ABC, antigüedad, por vencer, sin movimiento y comparativo entre sedes | Pendiente | 6 |
-| WMS-83 | Exportación a Excel, CSV y PDF | Parcial: CSV | 6 |
+| WMS-82 | Rotación, ABC, antigüedad, por vencer, sin movimiento y comparativo entre sedes | Hecho | 6b |
+| WMS-83 | Exportación a Excel, CSV y PDF | Hecho: Excel como CSV | 6b |
 | WMS-84 | Etiquetas de artículo, ubicación y bulto (ZPL y PDF) | Pendiente | 6 |
 
 ### Canales, 3PL y fiscal
@@ -371,6 +371,14 @@ de la última recepción del artículo). "Enviar al ERP" publica `purchase.reque
 (registro `purchase_request`, número `SC-…`) cuya cantidad cuenta como pedida hasta que llega mercadería del artículo o
 se cierra; sin ERP, se exporta a CSV. Permiso nuevo `purchase.request` (supervisor). Pruebas en `SupplyTests`. Siguen 6b
 (reportes y exportación) y 6c (etiquetas ZPL y PDF).
+
+**Estado 6b, reportes (2026-11):** hecha. Pantalla Reportes por sede (o todas las del usuario) y periodo: **rotación y
+ABC** (salidas, stock promedio, vueltas, días de inventario; clase por valor de las salidas, 80/95 %), **antigüedad**
+(días desde la última entrada, por tramos), **por vencer**, **sin movimiento**, **exactitud** de los conteos aprobados,
+**productividad por operario** (líneas recibidas, tomadas, despachadas, traslados, líneas contadas, ajustes y tareas),
+**kardex valorizado** del periodo (inicial, entradas, salidas y final con su valor) y **comparativo entre sedes**. Todos
+salen como tabla con totales y se exportan a **CSV** (Excel) y **PDF** (PDFsharp con Open Sans incrustada, horizontal si
+hay muchas columnas). Los valores, solo con `cost.view`. Pruebas en `ReportsTests`.
 
 ## Fase 7: canales y alcance · variable
 

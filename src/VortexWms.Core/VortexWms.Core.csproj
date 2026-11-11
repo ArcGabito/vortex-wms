@@ -11,6 +11,10 @@
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.14" />
+    <!-- PDF de reportes y etiquetas (fase 6), sin dependencias nativas. -->
+    <PackageReference Include="PDFsharp-MigraDoc" Version="6.2.4" />
+    <!-- PDFsharp trae la 8.0.1, con avisos de seguridad: se fija la versión corregida. -->
+    <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.14" />
     <!-- SDK del hub desde el feed local (ver nuget.config y scripts/pack-sdk.*): siempre la versión más alta. -->
     <PackageReference Include="VortexApi.Client" Version="0.*-*" />
     <!-- Base común de la suite: monedas, regiones, permisos, auditoría e idiomas. -->
@@ -20,6 +24,8 @@
   <ItemGroup>
     <!-- Textos de la interfaz por idioma (los usa la app con TextCatalog; las pruebas verifican que estén completos). -->
     <EmbeddedResource Include="Texts\*.json" LogicalName="VortexWms.Core.Texts.%(Filename)%(Extension)" />
+    <!-- Open Sans (OFL) para que los PDF salgan igual en cualquier equipo. -->
+    <EmbeddedResource Include="Recursos\Fuentes\*.ttf" LogicalName="VortexWms.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>
