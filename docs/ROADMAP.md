@@ -114,8 +114,8 @@ Estados: **Hecho**, **Parcial** (existe una parte; la fase indica qué falta) y 
 
 | # | Requisito | Estado | Fase |
 |---|---|---|---|
-| WMS-80 | Mínimo y máximo por sede, consumo promedio y cobertura | Parcial: mínimo por artículo | 6 |
-| WMS-81 | Sugerencia de compra que llega al ERP | Pendiente | 6 |
+| WMS-80 | Mínimo y máximo por sede, consumo promedio y cobertura | Hecho | 6a |
+| WMS-81 | Sugerencia de compra que llega al ERP | Hecho: `purchase.requested`; el ERP la consume en su fase propia | 6a |
 | WMS-82 | Rotación, ABC, antigüedad, por vencer, sin movimiento y comparativo entre sedes | Pendiente | 6 |
 | WMS-83 | Exportación a Excel, CSV y PDF | Parcial: CSV | 6 |
 | WMS-84 | Etiquetas de artículo, ubicación y bulto (ZPL y PDF) | Pendiente | 6 |
@@ -361,6 +361,16 @@ costo) o las rechaza. Movimientos nuevos `customer_return` (Tabla 12: 05) y `sup
   kardex valorizado por periodo y comparativo entre sedes. Exportación a Excel, CSV y PDF.
 - **Etiquetas** de artículo, ubicación y bulto, en ZPL para impresoras Zebra (red o Bluetooth) y en PDF para
   impresoras comunes.
+
+**Estado 6a, abastecimiento (2026-11):** hecha. **Máximo** por artículo y sede junto al mínimo (Inventario → ubicación y
+stock mínimo), replicado como `stock_settings`. Pantalla Abastecimiento por sede: **consumo diario** (ventas y despachos
+menos devoluciones de los últimos 7 a 180 días), **días de cobertura**, lo que viene en camino (recepciones esperadas) y
+lo ya pedido. Punto de pedido = mínimo, o sin mínimo el consumo del plazo del proveedor; se sugiere completar hasta el
+máximo, o sin máximo el consumo del plazo más los días a cubrir (redondeado hacia arriba). Se agrupa por **proveedor** (el
+de la última recepción del artículo). "Enviar al ERP" publica `purchase.requested` y deja una **solicitud abierta**
+(registro `purchase_request`, número `SC-…`) cuya cantidad cuenta como pedida hasta que llega mercadería del artículo o
+se cierra; sin ERP, se exporta a CSV. Permiso nuevo `purchase.request` (supervisor). Pruebas en `SupplyTests`. Siguen 6b
+(reportes y exportación) y 6c (etiquetas ZPL y PDF).
 
 ## Fase 7: canales y alcance · variable
 

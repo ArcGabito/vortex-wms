@@ -180,17 +180,19 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
     }
 
     /// <summary>
-    /// Ubicación en el almacén (pasillo/estante) y stock mínimo: datos propios del WMS. Se comparten con los demás
+    /// Ubicación en el almacén (pasillo/estante), stock mínimo y máximo (fase 6a): datos propios del WMS. Se comparten con los demás
     /// equipos por <c>wms.record.upserted</c>; si dos los cambian, gana el cambio más reciente.
     /// </summary>
-    public Task UpdateStockSettingsAsync(Guid siteId, Guid itemId, string? bin, decimal? reorderPoint, CancellationToken ct = default)
+    public Task UpdateStockSettingsAsync(Guid siteId, Guid itemId, string? bin, decimal? reorderPoint, decimal? maxStock = null,
+        CancellationToken ct = default)
     {
         RequirePermission(WmsPermissions.StockSettings);
         Require(reorderPoint is null or >= 0, T("error.el_minimo_no_puede_ser"));
+        Require(maxStock is null or > 0 && (reorderPoint is null || maxStock is null || maxStock >= reorderPoint), T("error.maximo_menor_que_minimo"));
         return InTransactionAsync(async (c, tx, now) =>
         {
             await RequireSiteAccessAsync(c, tx, siteId);
-            var settings = new StockSettingsData(siteId, itemId, Clean(bin)?.ToUpperInvariant(), reorderPoint);
+            var settings = new StockSettingsData(siteId, itemId, Clean(bin)?.ToUpperInvariant(), reorderPoint, maxStock);
             await WriteSettingsAsync(c, tx, settings, now);
             await Outbox.EnqueueEventAsync(c, tx, now, SuiteEvents.RecordUpserted,
                 new WmsRecord(WmsRecordKinds.StockSettings, $"{siteId}:{itemId}", now,
@@ -212,10 +214,10 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
 
     private static Task WriteSettingsAsync(SqliteConnection c, SqliteTransaction tx, StockSettingsData s, DateTimeOffset at) =>
         c.ExecAsync("""
-            INSERT INTO stock (site_id, item_id, on_hand, reserved, bin, reorder_point, updated_at, settings_updated_at)
-            VALUES ($site, $item, 0, 0, $bin, $min, $at, $at)
-            ON CONFLICT (site_id, item_id) DO UPDATE SET bin = $bin, reorder_point = $min, settings_updated_at = $at
-            """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$bin", s.Bin), ("$min", s.ReorderPoint), ("$at", at));
+            INSERT INTO stock (site_id, item_id, on_hand, reserved, bin, reorder_point, max_stock, updated_at, settings_updated_at)
+            VALUES ($site, $item, 0, 0, $bin, $min, $max, $at, $at)
+            ON CONFLICT (site_id, item_id) DO UPDATE SET bin = $bin, reorder_point = $min, max_stock = $max, settings_updated_at = $at
+            """, tx, ("$site", s.SiteId), ("$item", s.ItemId), ("$bin", s.Bin), ("$min", s.ReorderPoint), ("$max", s.MaxStock), ("$at", at));
 
     /// <summary>Valoriza una vez los movimientos anteriores a la fase 1 (bases migradas).</summary>
     internal async Task ValueExistingMovementsAsync(CancellationToken ct = default)
@@ -322,7 +324,7 @@ public sealed class InventoryService(WmsDatabase db, IWmsContext context, TimePr
         r.Guid("site_id"), r.Str("site_code"), r.Str("site_name"), r.Guid("item_id"), r.Str("sku"), r.Str("item_name"),
         r.StrOrNull("category"), r.Str("unit"), r.StrOrNull("barcode"), r.Dec("on_hand"), r.Dec("reserved"),
         r.DecOrNull("reorder_point"), r.StrOrNull("bin"), r.Dec("price"), r.Str("currency_code"), r.Time("updated_at"),
-        r.DecOrNull("avg_cost"));
+        r.DecOrNull("avg_cost"), MaxStock: r.DecOrNull("max_stock"));
 
     /// <summary>Costo promedio y valor a costo, solo para quien puede ver costos.</summary>
     private async Task<List<StockRow>> WithCostsAsync(SqliteConnection c, IEnumerable<StockRow> rows)

@@ -317,6 +317,10 @@
                     <label>@T("inventory.stock_minimo")</label>
                     <input class="control" type="number" min="0" step="any" placeholder="@(T("inventory.sin_minimo"))" @bind="st.ReorderPoint" />
                 </div>
+                <div class="field">
+                    <label>@T("inventory.stock_maximo")</label>
+                    <input class="control" type="number" min="0" step="any" placeholder="@(T("inventory.sin_maximo"))" @bind="st.MaxStock" />
+                </div>
             </div>
             <div class="alert info"><Icon Name="bell" Size="18" /><span>@T("inventory.cuando_el_disponible_llegue_al")</span></div>
         </ChildContent>
@@ -366,6 +370,7 @@
         public StockRow Row { get; } = row;
         public string? Bin { get; set; } = row.Bin;
         public decimal? ReorderPoint { get; set; } = row.ReorderPoint;
+        public decimal? MaxStock { get; set; } = row.MaxStock;
     }
 
     [SupplyParameterFromQuery(Name = "q")] public string? Query { get; set; }
@@ -604,7 +609,7 @@
         if (_settings is not { } st)
             return;
         _busy = true;
-        _error = await TryAsync(() => Wms.Inventory.UpdateStockSettingsAsync(st.Row.SiteId, st.Row.ItemId, st.Bin, st.ReorderPoint), T("inventory.ubicacion_minimo_guardados"));
+        _error = await TryAsync(() => Wms.Inventory.UpdateStockSettingsAsync(st.Row.SiteId, st.Row.ItemId, st.Bin, st.ReorderPoint, st.MaxStock), T("inventory.ubicacion_minimo_guardados"));
         _busy = false;
         if (_error is null)
             CloseModals();

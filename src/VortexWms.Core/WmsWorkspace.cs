@@ -23,6 +23,7 @@ public sealed class WmsWorkspace
         Tasks = new TaskService(db, context, clock);
         Counts = new CountService(db, context, clock);
         Returns = new ReturnService(db, context, clock);
+        Supply = new SupplyService(db, context, clock);
         Audit = new AuditService(db, context, clock);
         Conflicts = new SyncConflictService(db, context, clock);
         SyncStore = new SqliteSyncStore(db);
@@ -39,6 +40,7 @@ public sealed class WmsWorkspace
     public TaskService Tasks { get; }
     public CountService Counts { get; }
     public ReturnService Returns { get; }
+    public SupplyService Supply { get; }
     public AuditService Audit { get; }
     public SyncConflictService Conflicts { get; }
     public SqliteSyncStore SyncStore { get; }

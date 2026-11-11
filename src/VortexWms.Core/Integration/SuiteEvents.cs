@@ -24,6 +24,9 @@ public static class SuiteEvents
     /// <summary>Devolución al proveedor (fase 5b).</summary>
     public const string GoodsReturned = "goods.returned";
 
+    /// <summary>Sugerencia de compra por proveedor (fase 6a): el ERP la registra como solicitud de compra por aprobar.</summary>
+    public const string PurchaseRequested = "purchase.requested";
+
     // Publican el WMS, el ERP y el CRM
     public const string OrderCancelled = "order.cancelled";
 
@@ -147,6 +150,9 @@ public static class WmsRecordKinds
 
     /// <summary>Merma reportada (con foto) y su aprobación. Id: el de la merma.</summary>
     public const string Shrinkage = "shrinkage";
+
+    /// <summary>Solicitud de compra enviada al ERP (fase 6a) y su estado. Id: el de la solicitud.</summary>
+    public const string PurchaseRequest = "purchase_request";
 }
 
 /// <summary>
@@ -155,7 +161,8 @@ public static class WmsRecordKinds
 /// </summary>
 public sealed record WmsRecord(string Kind, string Id, DateTimeOffset UpdatedAt, System.Text.Json.JsonElement Data);
 
-public sealed record StockSettingsData(Guid SiteId, Guid ItemId, string? Bin, decimal? ReorderPoint);
+/// <param name="MaxStock">Máximo (fase 6a): hasta dónde se repone al sugerir la compra.</param>
+public sealed record StockSettingsData(Guid SiteId, Guid ItemId, string? Bin, decimal? ReorderPoint, decimal? MaxStock = null);
 
 public sealed record LotStatusData(Guid SiteId, Guid ItemId, string LotCode, string Status, string? Note = null);
 
@@ -191,3 +198,11 @@ public sealed record GoodsReturned(Guid ReturnId, string Number, Guid? PurchaseO
     IReadOnlyList<GoodsReturnedLine> Lines);
 
 public sealed record GoodsReturnedLine(Guid ItemId, decimal Quantity, decimal UnitCost);
+
+/// <summary><c>purchase.requested</c>: sugerencia de compra del almacén (fase 6a) para la solicitud de compra del ERP.</summary>
+public sealed record PurchaseRequested(Guid RequestId, string Number, Guid SiteId, Guid? SupplierId, DateOnly? NeededBy, string? Notes,
+    string? RequestedBy, IReadOnlyList<PurchaseRequestedLine> Lines);
+
+/// <param name="UnitCost">Costo promedio en el almacén (referencia para el comprador), en la moneda de la empresa.</param>
+public sealed record PurchaseRequestedLine(Guid ItemId, decimal Quantity, string? UnitCode, decimal? UnitCost, decimal OnHand, decimal? Minimum,
+    decimal? Maximum, decimal DailyUsage, decimal? CoverageDays);
