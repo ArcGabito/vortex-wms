@@ -68,3 +68,7 @@ jobs:
 
       - name: Build
         run: dotnet build src/VortexWms/VortexWms.csproj --configuration Release -f net10.0-windows10.0.19041.0 -warnaserror
+
+      # El código de Android (Bluetooth de las etiquetas) solo compila con el workload de Android: se verifica aquí.
+      - name: Build (Android)
+        run: dotnet build src/VortexWms/VortexWms.csproj --configuration Release -f net10.0-android

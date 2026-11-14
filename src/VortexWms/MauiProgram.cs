@@ -30,6 +30,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<AppSession>();
         builder.Services.AddSingleton<Toasts>();
         builder.Services.AddSingleton<FileExporter>();
+        builder.Services.AddSingleton<BluetoothPrinter>();
         builder.Services.AddSingleton<BackButton>();
 
 #if WINDOWS
