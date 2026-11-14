@@ -2,6 +2,7 @@
 @inherits WmsPage
 @using VortexWms.Core.Labels
 @inject FileExporter Exporter
+@inject BluetoothPrinter Bluetooth
 
 <SectionContent SectionName="page-title">@T("etiquetas.etiquetas")</SectionContent>
 
@@ -93,13 +94,40 @@
 
                 <div class="field">
                     <label>@T("etiquetas.zebra")</label>
-                    <div style="display:flex;gap:6px">
-                        <input class="control" placeholder="192.168.1.50" value="@_zebra" @onchange="e => SaveZebra(e.Value?.ToString())" />
-                        <button class="btn btn-dark" disabled="@(_busy || _selected.Count == 0 || string.IsNullOrWhiteSpace(_zebra))" @onclick="ZebraAsync">
-                            <Icon Name="barcode" Size="18" />@T("etiquetas.imprimir_zebra")
-                        </button>
-                    </div>
-                    <span class="hint">@T("etiquetas.zebra_explica")</span>
+                    @if (BluetoothPrinter.IsSupported)
+                    {
+                        <div class="segmented" style="margin-bottom:6px">
+                            <button class="@(_mode == NetworkMode ? "on" : "")" @onclick="UseNetwork">@T("etiquetas.por_red")</button>
+                            <button class="@(_mode == BluetoothMode ? "on" : "")" @onclick="UseBluetoothAsync">@T("etiquetas.por_bluetooth")</button>
+                        </div>
+                    }
+                    @if (_mode == BluetoothMode)
+                    {
+                        <div style="display:flex;gap:6px">
+                            <select class="select" value="@(_btId ?? "")" @onchange="e => SaveBluetooth(e.Value?.ToString())">
+                                <option value="">@T("etiquetas.elige_impresora")</option>
+                                @foreach (var bt in _paired)
+                                {
+                                    <option value="@bt.Id">@bt.Name</option>
+                                }
+                            </select>
+                            <button class="btn btn-ghost icon-btn" title="@(T("etiquetas.buscar_emparejadas"))" aria-label="@(T("etiquetas.buscar_emparejadas"))" @onclick="LoadPairedAsync"><Icon Name="sync" Size="18" /></button>
+                            <button class="btn btn-dark" disabled="@(_busy || _selected.Count == 0 || string.IsNullOrEmpty(_btId))" @onclick="BluetoothAsync">
+                                <Icon Name="barcode" Size="18" />@T("etiquetas.imprimir_zebra")
+                            </button>
+                        </div>
+                        <span class="hint">@T("etiquetas.bluetooth_explica")</span>
+                    }
+                    else
+                    {
+                        <div style="display:flex;gap:6px">
+                            <input class="control" placeholder="192.168.1.50" value="@_zebra" @onchange="e => SaveZebra(e.Value?.ToString())" />
+                            <button class="btn btn-dark" disabled="@(_busy || _selected.Count == 0 || string.IsNullOrWhiteSpace(_zebra))" @onclick="ZebraAsync">
+                                <Icon Name="barcode" Size="18" />@T("etiquetas.imprimir_zebra")
+                            </button>
+                        </div>
+                        <span class="hint">@T("etiquetas.zebra_explica")</span>
+                    }
                 </div>
             </div>
         </div>
@@ -108,6 +136,14 @@
 
 @code {
     private const string ZebraKey = "labels.zebra";
+    private const string ModeKey = "labels.mode";
+    private const string BluetoothKey = "labels.bluetooth";
+    private const string NetworkMode = "network";
+    private const string BluetoothMode = "bluetooth";
+
+    private string _mode = NetworkMode;
+    private string? _btId;
+    private IReadOnlyList<BluetoothPrinterInfo> _paired = [];
 
     private string _kind = LabelKinds.Item;
     private IReadOnlyList<SiteRow> _sites = [];
@@ -123,6 +159,76 @@
     {
         base.OnInitialized();
         _zebra = Preferences.Default.Get<string?>(ZebraKey, null);
+        _btId = Preferences.Default.Get<string?>(BluetoothKey, null);
+        _mode = BluetoothPrinter.IsSupported && Preferences.Default.Get(ModeKey, NetworkMode) == BluetoothMode ? BluetoothMode : NetworkMode;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (firstRender && _mode == BluetoothMode)
+        {
+            await LoadPairedAsync();
+            StateHasChanged();
+        }
+    }
+
+    private void UseNetwork()
+    {
+        _mode = NetworkMode;
+        Preferences.Default.Set(ModeKey, NetworkMode);
+    }
+
+    private async Task UseBluetoothAsync()
+    {
+        _mode = BluetoothMode;
+        Preferences.Default.Set(ModeKey, BluetoothMode);
+        await LoadPairedAsync();
+    }
+
+    /// <summary>Las impresoras emparejadas en el sistema (la Zebra se empareja antes en Bluetooth del equipo).</summary>
+    private async Task LoadPairedAsync()
+    {
+        _error = null;
+        try
+        {
+            _paired = await Bluetooth.GetPairedAsync();
+            if (_paired.Count == 0)
+                _error = T("etiquetas.sin_emparejadas");
+        }
+        catch (Exception ex)
+        {
+            _error = ex.Message;
+        }
+    }
+
+    private void SaveBluetooth(string? id)
+    {
+        _btId = string.IsNullOrEmpty(id) ? null : id;
+        if (_btId is null)
+            Preferences.Default.Remove(BluetoothKey);
+        else
+            Preferences.Default.Set(BluetoothKey, _btId);
+    }
+
+    private async Task BluetoothAsync()
+    {
+        if (_btId is not { } id)
+            return;
+        _busy = true;
+        if (await LabelsAsync() is { } labels)
+        {
+            try
+            {
+                await Bluetooth.SendAsync(id, System.Text.Encoding.UTF8.GetBytes(Zpl.Render(labels, LabelSize.Parse(_size), _copies)));
+                Toasts.Success(T("etiquetas.enviadas", labels.Count));
+            }
+            catch (Exception ex)
+            {
+                _error = T("etiquetas.zebra_error", _paired.FirstOrDefault(p => p.Id == id)?.Name ?? id, ex.Message);
+            }
+        }
+        _busy = false;
     }
 
     protected override async Task LoadAsync()

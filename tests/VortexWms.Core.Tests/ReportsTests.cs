@@ -47,6 +47,14 @@ public sealed class ReportsTests : IAsyncLifetime
         var sites = await Report(ReportKinds.Sites);
         Assert.Equal(260m, sites.Rows.Single()[3]);
 
+        var xlsx = ReportService.ToXlsx(kardex, "Vortex SAC");
+        using (var zip = new System.IO.Compression.ZipArchive(new MemoryStream(xlsx)))
+        {
+            var sheet = System.Xml.Linq.XDocument.Load(zip.GetEntry("xl/worksheets/sheet1.xml")!.Open());
+            var values = sheet.Descendants().Where(e => e.Name.LocalName == "c").Select(e => e.Value).ToList();
+            Assert.Contains("CAFE-250", values);
+            Assert.Contains("240", values);   // valor final del café, como número
+        }
         var csv = ReportService.ToCsv(kardex);
         Assert.Contains("CAFE-250", csv);
         var pdf = ReportPdf.Render(kardex, "Vortex SAC", CultureInfo.GetCultureInfo("es-PE"));

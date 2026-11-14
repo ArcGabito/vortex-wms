@@ -12,7 +12,8 @@
             <p>@T("reportes.explica")</p>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline" disabled="@(_report is null)" @onclick="CsvAsync"><Icon Name="download" Size="18" />@T("reportes.excel")</button>
+            <button class="btn btn-outline" disabled="@(_report is null)" @onclick="XlsxAsync"><Icon Name="download" Size="18" />@T("reportes.excel")</button>
+            <button class="btn btn-outline" disabled="@(_report is null)" @onclick="CsvAsync"><Icon Name="download" Size="18" />@T("reportes.csv")</button>
             <button class="btn btn-dark" disabled="@(_report is null)" @onclick="PdfAsync"><Icon Name="download" Size="18" />@T("reportes.pdf")</button>
         </div>
     </div>
@@ -163,6 +164,22 @@
     }
 
     private string FileName(string ext) => $"vortex-wms-{_kind}-{_from:yyyyMMdd}-{_to:yyyyMMdd}.{ext}";
+
+    private async Task XlsxAsync()
+    {
+        if (_report is not { } rep)
+            return;
+        try
+        {
+            var company = (await Wms.Master.GetCompanyAsync()) is { } co ? co.TradeName ?? co.LegalName : "Vortex WMS";
+            var path = await Exporter.ExportBytesAsync(FileName("xlsx"), ReportService.ToXlsx(rep, company), VortexApi.Suite.Export.XlsxWriter.ContentType);
+            Toasts.Success(T("inventory.exportado", Path.GetFileName(path)));
+        }
+        catch (Exception ex)
+        {
+            Toasts.Error(T("inventory.no_se_pudo_exportar", ex.Message));
+        }
+    }
 
     private async Task CsvAsync()
     {

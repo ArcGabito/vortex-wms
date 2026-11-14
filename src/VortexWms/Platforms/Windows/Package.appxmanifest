@@ -41,6 +41,8 @@
 
   <Capabilities>
     <rescap:Capability Name="runFullTrust" />
+    <!-- Zebra por Bluetooth (RFCOMM, puerto serie). -->
+    <DeviceCapability Name="bluetooth" />
   </Capabilities>
 
 </Package>

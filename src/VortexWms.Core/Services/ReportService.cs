@@ -438,6 +438,22 @@ public sealed class ReportService(WmsDatabase db, IWmsContext context, TimeProvi
         };
     }
 
+    /// <summary>
+    /// El reporte en Excel (.xlsx): empresa y periodo arriba, encabezados con filtro, números como números, fechas como
+    /// fechas y la fila de totales.
+    /// </summary>
+    public static byte[] ToXlsx(WmsReport r, string company) =>
+        VortexApi.Suite.Export.XlsxWriter.Write(new VortexApi.Suite.Export.XlsxSheet(r.Title,
+            r.Columns.Select(c => new VortexApi.Suite.Export.XlsxColumn(c.Header, c.Type switch
+            {
+                ReportColumnType.Number => VortexApi.Suite.Export.XlsxColumnType.Number,
+                ReportColumnType.Money => VortexApi.Suite.Export.XlsxColumnType.Money,
+                ReportColumnType.Percent => VortexApi.Suite.Export.XlsxColumnType.Percent,
+                ReportColumnType.Date => VortexApi.Suite.Export.XlsxColumnType.Date,
+                _ => VortexApi.Suite.Export.XlsxColumnType.Text,
+            })).ToList(),
+            r.Rows, r.Totals, $"{company} · {r.Title}", r.CurrencyCode is { } cur ? $"{r.Subtitle} · {cur}" : r.Subtitle));
+
     /// <summary>Una celda para mostrar o imprimir con la cultura dada.</summary>
     public static string Format(object? value, ReportColumnType type, CultureInfo culture) => value switch
     {
